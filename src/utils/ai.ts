@@ -18,7 +18,7 @@ const SYSTEM_PROMPT = `你是一个工作活动分析助手。用户会发送屏
 export async function analyzeScreenshot(
   base64: string,
   apiKey: string,
-  baseUrl: string = 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  baseUrl: string = 'https://tokendance.space/gateway/v1',
 ): Promise<ActivityAnalysis> {
   const response = await fetch(baseUrl + '/chat/completions', {
     method: 'POST',
@@ -27,7 +27,7 @@ export async function analyzeScreenshot(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'qwen-vl-max',
+      model: 'qwen3-vl-plus',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: [
@@ -55,7 +55,7 @@ export async function generateReport(
   type: 'daily' | 'weekly' | 'monthly',
   _template: string = 'standard',
   apiKey: string,
-  baseUrl: string = 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  baseUrl: string = 'https://tokendance.space/gateway/v1',
 ): Promise<string> {
   const text = activities.map(a => '[' + a.timestamp + '] ' + a.category + ' | ' + a.app_name + ' | ' + a.description).join('\n')
   const typeName = type === 'daily' ? '日报' : type === 'weekly' ? '周报' : '月报'
@@ -67,7 +67,7 @@ export async function generateReport(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'qwen-max',
+      model: 'qwen3.7-max',
       messages: [{ role: 'user', content: '请根据以下活动记录生成' + typeName + '，按时间整理，突出重点，输出Markdown。\n\n' + text }],
       max_tokens: 2000,
       temperature: 0.3,
