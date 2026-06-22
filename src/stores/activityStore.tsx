@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS: Settings = {
   apiKey: '',
   intervalSeconds: 300,
   autoStart: false,
-  baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  baseUrl: 'https://tokendance.space/gateway/v1',
 }
 
 const STORAGE_KEY = 'xiaohei-activities'
@@ -50,7 +50,20 @@ function loadActivities(): Activity[] {
 function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
-    return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS
+    if (!raw) return DEFAULT_SETTINGS
+    const saved = JSON.parse(raw)
+    return {
+      ...DEFAULT_SETTINGS,
+      ...saved,
+      apiKey: typeof saved.apiKey === 'string' ? saved.apiKey : '',
+      baseUrl: typeof saved.baseUrl === 'string' && saved.baseUrl.trim()
+        ? saved.baseUrl
+        : DEFAULT_SETTINGS.baseUrl,
+      intervalSeconds: Number.isFinite(saved.intervalSeconds)
+        ? Math.max(10, Number(saved.intervalSeconds))
+        : DEFAULT_SETTINGS.intervalSeconds,
+      autoStart: Boolean(saved.autoStart),
+    }
   } catch {
     return DEFAULT_SETTINGS
   }

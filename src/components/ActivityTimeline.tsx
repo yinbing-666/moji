@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { useActivityStore, type Activity } from '../stores/activityStore'
 import { ScreenshotModal } from './ScreenshotModal'
 
-const CATEGORY_EMOJI: Record<string, string> = {
-  dev: '💻', meeting: '📅', doc: '📝', communication: '💬', other: '📌',
-}
-
-const CATEGORY_LABEL: Record<string, string> = {
-  dev: '开发', meeting: '会议', doc: '文档', communication: '沟通', other: '其他',
+const CATEGORY_LABEL: Record<Activity['category'], string> = {
+  dev: '开发',
+  meeting: '会议',
+  doc: '文档',
+  communication: '沟通',
+  other: '其他',
 }
 
 function formatTime(iso: string) {
@@ -20,14 +20,13 @@ function ActivityItem({ activity }: { activity: Activity }) {
   return (
     <>
       <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors group">
-        <span className="text-lg mt-0.5">{CATEGORY_EMOJI[activity.category] || '📌'}</span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-900">{activity.app}</span>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+            <span className="text-sm font-medium text-gray-900 truncate">{activity.app}</span>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
               {CATEGORY_LABEL[activity.category] || activity.category}
             </span>
-            <span className="text-xs text-gray-400 ml-auto">{formatTime(activity.timestamp)}</span>
+            <span className="text-xs text-gray-400 ml-auto shrink-0">{formatTime(activity.timestamp)}</span>
           </div>
           <p className="text-sm text-gray-600 mt-0.5 truncate">{activity.description}</p>
           {activity.title && (
@@ -36,12 +35,14 @@ function ActivityItem({ activity }: { activity: Activity }) {
         </div>
         {activity.screenshotBase64 && (
           <button
+            type="button"
             onClick={() => setModalOpen(true)}
-            className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+            aria-label="Open screenshot preview"
           >
             <img
-              src={`data:image/png;base64,${activity.screenshotBase64}`}
-              alt="缩略图"
+              src={`data:image/jpeg;base64,${activity.screenshotBase64}`}
+              alt="Screenshot thumbnail"
               className="w-16 h-10 object-cover rounded border border-gray-200 hover:border-green-400 transition-colors"
             />
           </button>
@@ -57,12 +58,17 @@ function ActivityItem({ activity }: { activity: Activity }) {
 export function ActivityTimeline() {
   const { activities, clearActivities } = useActivityStore()
 
+  const handleClear = () => {
+    if (window.confirm('确定清空所有活动记录？此操作不可撤销。')) {
+      clearActivities()
+    }
+  }
+
   if (activities.length === 0) {
     return (
-      <div className="text-center py-16 text-gray-400">
-        <p className="text-4xl mb-3">📭</p>
-        <p className="text-sm">暂无活动记录</p>
-        <p className="text-xs mt-1">开启自动截图后，AI 会分析你的工作内容</p>
+      <div role="status" className="text-center py-16 text-gray-500">
+        <p className="text-sm font-medium text-gray-700">No activity records yet</p>
+        <p className="text-xs mt-1">Start capture after configuring your API key.</p>
       </div>
     )
   }
@@ -70,12 +76,13 @@ export function ActivityTimeline() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-gray-700">活动记录 ({activities.length})</h3>
+        <h2 className="text-sm font-medium text-gray-700">Activity records ({activities.length})</h2>
         <button
-          onClick={clearActivities}
-          className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+          type="button"
+          onClick={handleClear}
+          className="text-xs text-gray-500 hover:text-red-600 transition-colors"
         >
-          清空
+          Clear
         </button>
       </div>
       <div className="space-y-1 max-h-[60vh] overflow-y-auto">

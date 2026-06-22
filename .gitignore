@@ -1,2 +1,4 @@
 node_modules/\ndist/\n.target/\n*.log
 dist/
+src-tauri/target/
+api-config.json

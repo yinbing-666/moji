@@ -19,17 +19,22 @@ export function ScreenshotModal({ base64, onClose }: Props) {
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Screenshot preview"
     >
       <div className="relative max-w-[90vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
         <button
+          type="button"
           onClick={onClose}
+          aria-label="Close screenshot preview"
           className="absolute -top-3 -right-3 z-10 w-8 h-8 bg-white rounded-full shadow-lg flex items-center justify-center text-gray-600 hover:text-gray-900 text-sm font-bold"
         >
-          ✕
+          x
         </button>
         <img
-          src={`data:image/png;base64,${base64}`}
-          alt="截屏预览"
+          src={`data:image/jpeg;base64,${base64}`}
+          alt="Screenshot preview"
           className="max-w-full max-h-[85vh] rounded-lg shadow-2xl"
         />
       </div>
