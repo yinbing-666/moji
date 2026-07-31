@@ -16,6 +16,8 @@ export interface Settings {
   maxWindowsPerCapture: number
   autoStart: boolean
   baseUrl: string
+  analysisModel: string
+  reportModel: string
   excludedKeywords: string[]
   saveScreenshotThumbnails: boolean
 }
@@ -40,6 +42,8 @@ const DEFAULT_SETTINGS: Settings = {
   maxWindowsPerCapture: 3,
   autoStart: false,
   baseUrl: 'https://tokendance.space/gateway/v1',
+  analysisModel: 'qwen3-vl-plus',
+  reportModel: 'qwen3.7-max',
   excludedKeywords: ['Password', 'Token', 'Bank', '钱包', '验证码', '密钥'],
   saveScreenshotThumbnails: false,
 }
@@ -130,6 +134,12 @@ function loadSettings(): Settings {
       baseUrl: typeof saved.baseUrl === 'string' && saved.baseUrl.trim()
         ? saved.baseUrl
         : DEFAULT_SETTINGS.baseUrl,
+      analysisModel: typeof saved.analysisModel === 'string' && saved.analysisModel.trim()
+        ? saved.analysisModel.trim()
+        : DEFAULT_SETTINGS.analysisModel,
+      reportModel: typeof saved.reportModel === 'string' && saved.reportModel.trim()
+        ? saved.reportModel.trim()
+        : DEFAULT_SETTINGS.reportModel,
       excludedKeywords: normalizeExcludedKeywords(saved.excludedKeywords),
       intervalSeconds: Number.isFinite(saved.intervalSeconds)
         ? Math.max(10, Number(saved.intervalSeconds))

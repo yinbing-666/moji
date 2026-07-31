@@ -5,8 +5,6 @@ export interface ActivityAnalysis {
   description: string
 }
 
-const ANALYSIS_MODEL = 'qwen3-vl-plus'
-const REPORT_MODEL = 'qwen3.7-max'
 const VALID_CATEGORIES = ['dev', 'meeting', 'doc', 'communication', 'other'] as const
 
 const SYSTEM_PROMPT =
@@ -133,9 +131,14 @@ export async function analyzeScreenshot(
   base64: string,
   apiKey?: string,
   baseUrl?: string,
+  model?: string,
   context?: { app?: string; title?: string; processPath?: string; isForeground?: boolean },
 ): Promise<ActivityAnalysis> {
   const { key, url } = requireAiConfig(apiKey, baseUrl)
+  const analysisModel = model?.trim()
+  if (!analysisModel) {
+    throw new Error('未配置截图分析模型')
+  }
   const processFile = processFileName(context?.processPath)
   const contextText = [
     context?.app ? 'Process: ' + context.app : '',
@@ -154,7 +157,7 @@ export async function analyzeScreenshot(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: ANALYSIS_MODEL,
+      model: analysisModel,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         {
@@ -184,8 +187,13 @@ export async function generateReport(
   type: 'daily' | 'weekly' | 'monthly',
   apiKey?: string,
   baseUrl?: string,
+  model?: string,
 ): Promise<string> {
   const { key, url } = requireAiConfig(apiKey, baseUrl)
+  const reportModel = model?.trim()
+  if (!reportModel) {
+    throw new Error('未配置报告生成模型')
+  }
   const lines = activities.map(a => '[' + a.timestamp + '] ' + a.category + ' | ' + a.app_name + ' | ' + a.description)
   const text = lines.join('\n')
   const reportName = type === 'daily' ? '日报' : type === 'weekly' ? '周报' : '月报'
@@ -197,7 +205,7 @@ export async function generateReport(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: REPORT_MODEL,
+      model: reportModel,
       messages: [{
         role: 'user',
         content: '请根据以下活动记录生成一份简洁的中文 Markdown ' + reportName + '。结构固定为：主要完成、沟通协作、问题阻塞、明日/后续计划。不要编造记录中不存在的成果。\n\n' + text,

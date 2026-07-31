@@ -37,6 +37,8 @@ export function Settings() {
     updateSettings({
       apiKey: draft.apiKey.trim(),
       baseUrl: draft.baseUrl.trim().replace(/\/+$/, ''),
+      analysisModel: draft.analysisModel.trim() || 'qwen3-vl-plus',
+      reportModel: draft.reportModel.trim() || 'qwen3.7-max',
       intervalSeconds: draft.intervalSeconds,
       maxWindowsPerCapture: draft.maxWindowsPerCapture,
       autoStart: draft.autoStart,
@@ -99,6 +101,40 @@ export function Settings() {
         <div className="mt-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 leading-relaxed">
           截图和活动描述会发送到上面填写的 Base URL 对应的服务方。默认的 tokendance.space 是第三方中转站，请确认信任该服务方后再使用。
         </div>
+      </div>
+
+      <div>
+        <label htmlFor="analysis-model" className="block text-sm font-medium text-gray-700 mb-1">
+          截图分析模型
+        </label>
+        <input
+          id="analysis-model"
+          type="text"
+          value={draft.analysisModel}
+          onChange={e => setDraft(d => ({ ...d, analysisModel: e.target.value }))}
+          placeholder="qwen3-vl-plus"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          用于识别截图内容，必须是支持图片理解的多模态模型。
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="report-model" className="block text-sm font-medium text-gray-700 mb-1">
+          报告生成模型
+        </label>
+        <input
+          id="report-model"
+          type="text"
+          value={draft.reportModel}
+          onChange={e => setDraft(d => ({ ...d, reportModel: e.target.value }))}
+          placeholder="qwen3.7-max"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          用于生成日报、周报、月报，普通文本模型即可。
+        </p>
       </div>
       </section>
 

@@ -103,6 +103,7 @@ export function useAutoCapture() {
             compressed,
             settings.apiKey,
             settings.baseUrl,
+            settings.analysisModel,
             {
               app: capturedWindow.process_name,
               title: capturedWindow.title,
@@ -139,7 +140,7 @@ export function useAutoCapture() {
       analyzingRef.current = false
       setIsAnalyzing(false)
     }
-  }, [settings.apiKey, settings.baseUrl, settings.saveScreenshotThumbnails, addActivity, setIsAnalyzing])
+  }, [settings.apiKey, settings.baseUrl, settings.analysisModel, settings.saveScreenshotThumbnails, addActivity, setIsAnalyzing])
 
   return useScreenshot({
     intervalSeconds: settings.intervalSeconds,

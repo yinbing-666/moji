@@ -87,6 +87,7 @@ export function ReportView() {
         type,
         settings.apiKey,
         settings.baseUrl,
+        settings.reportModel,
       )
       setReport(result)
       setNotice(null)
