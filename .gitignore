@@ -1,4 +1,29 @@
-node_modules/\ndist/\n.target/\n*.log
+# Dependencies
+node_modules/
+
+# Build output
 dist/
 src-tauri/target/
+.target/
+
+# Logs
+*.log
+*.err.log
+*.pid
+
+# Local API config (legacy, do not commit secrets)
 api-config.json
+
+# AI / tool session directories
+.serena/
+.spec-workflow/
+.superpowers/
+.playwright-cli/
+
+# Local debug/experiment artifacts
+diag.*
+screenshot-verify.mjs
+app-current.png
+app-final.png
+app-fixed2.png
+screenshots/
