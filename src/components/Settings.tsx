@@ -1,5 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useActivityStore } from '../stores/activityStore'
+import { parseImport, mergeImport } from '../utils/importData'
+import { exportActivitiesAsJson, exportActivitiesAsCompactMarkdown } from '../utils/export'
+import {
+  dbDiagnoseDb,
+  dbLoadBackup,
+  dbRestoreBackupToDb,
+  dbSaveBackup,
+  dbAwHealth,
+  isSqliteAvailable,
+} from '../utils/db'
 
 const INTERVAL_OPTIONS = [
   { label: '1 分钟', value: 60 },
@@ -17,16 +27,53 @@ const WINDOW_LIMIT_OPTIONS = [
 ]
 
 export function Settings() {
-  const { settings, updateSettings } = useActivityStore()
+  const {
+    settings,
+    updateSettings,
+    activities,
+    importActivity,
+    reloadFromSqlite,
+    sqliteReady,
+    syncFromAw,
+  } = useActivityStore()
   const [showKey, setShowKey] = useState(false)
   const [draft, setDraft] = useState(settings)
   const [excludedText, setExcludedText] = useState(settings.excludedKeywords.join('\n'))
   const [saved, setSaved] = useState(false)
+  const [importStatus, setImportStatus] = useState<string | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [dbStatus, setDbStatus] = useState<string | null>(null)
+  const [backupExists, setBackupExists] = useState(false)
+  const [backupBusy, setBackupBusy] = useState(false)
+  const [backupMsg, setBackupMsg] = useState<string | null>(null)
+  const [awStatus, setAwStatus] = useState<string | null>(null)
+  const [awBusy, setAwBusy] = useState(false)
+  const [awSyncMsg, setAwSyncMsg] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setDraft(settings)
     setExcludedText(settings.excludedKeywords.join('\n'))
   }, [settings])
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const available = await isSqliteAvailable()
+      if (cancelled) return
+      if (!available) {
+        setDbStatus('SQLite 不可用（浏览器模式或后端未启动）')
+        setBackupExists(false)
+        return
+      }
+      const diag = await dbDiagnoseDb()
+      const hasBackup = await dbLoadBackup()
+      if (cancelled) return
+      setDbStatus(diag ?? 'SQLite 已连接')
+      setBackupExists(Boolean(hasBackup))
+    })()
+    return () => { cancelled = true }
+  }, [sqliteReady])
 
   const handleSave = () => {
     const excludedKeywords = excludedText
@@ -43,10 +90,105 @@ export function Settings() {
       maxWindowsPerCapture: draft.maxWindowsPerCapture,
       autoStart: draft.autoStart,
       excludedKeywords,
+      excludedApps: draft.excludedApps,
+      excludedTitlePatterns: draft.excludedTitlePatterns,
       saveScreenshotThumbnails: draft.saveScreenshotThumbnails,
+      appearance: draft.appearance,
+      dataSource: draft.dataSource,
+      awHost: draft.awHost.trim() || '127.0.0.1',
+      awPort: Number(draft.awPort) || 5600,
+      awSyncMinutes: Number(draft.awSyncMinutes) || 5,
     })
     setSaved(true)
     window.setTimeout(() => setSaved(false), 2000)
+  }
+
+  const handleTestAw = async () => {
+    setAwBusy(true)
+    setAwStatus(null)
+    try {
+      const info = await dbAwHealth({ host: draft.awHost.trim() || '127.0.0.1', port: Number(draft.awPort) || 5600 })
+      if (!info) throw new Error('连接失败，请确认 ActivityWatch 已启动')
+      setAwStatus(`已连接 ✅ 版本 ${info.version ?? '?'}（${info.hostname ?? '本机'}）`)
+    } catch (err) {
+      setAwStatus('连接失败 ❌ ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setAwBusy(false)
+    }
+  }
+
+  const handleSyncAw = async () => {
+    setAwBusy(true)
+    setAwSyncMsg(null)
+    try {
+      const added = await syncFromAw()
+      setAwSyncMsg(added > 0 ? `同步完成：新增 ${added} 条活动记录 🎉` : '同步完成：没有新记录（可能已同步过）')
+    } catch (err) {
+      setAwSyncMsg('同步失败：' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setAwBusy(false)
+    }
+  }
+
+  const handleImportFile = async (file: File) => {
+    setImportError(null)
+    setImportStatus('解析中...')
+    try {
+      const text = await file.text()
+      const incoming = parseImport(text)
+      const { toImport, imported, skipped } = mergeImport(incoming, activities)
+      let reallyImported = 0
+      for (const item of toImport) {
+        if (importActivity(item)) reallyImported++
+      }
+      setImportStatus(
+        `导入完成：${reallyImported} 条新增`
+        + (reallyImported !== imported ? `（预计 ${imported}）` : '')
+        + `，${skipped} 条跳过（ID 重复）`,
+      )
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err))
+      setImportStatus(null)
+    }
+  }
+
+  const refreshDbInfo = async () => {
+    const diag = await dbDiagnoseDb()
+    const hasBackup = await dbLoadBackup()
+    setDbStatus(diag ?? 'SQLite 已连接')
+    setBackupExists(Boolean(hasBackup))
+  }
+
+  const handleBackupNow = async () => {
+    setBackupBusy(true)
+    setBackupMsg(null)
+    try {
+      const ok = await dbSaveBackup()
+      if (!ok) throw new Error('备份失败，请确认已在桌面端运行')
+      await refreshDbInfo()
+      setBackupMsg('备份已保存到本机应用数据目录')
+    } catch (err) {
+      setBackupMsg(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBackupBusy(false)
+    }
+  }
+
+  const handleRestoreBackup = async () => {
+    if (!window.confirm('确定从备份恢复？当前数据库会被备份文件覆盖。')) return
+    setBackupBusy(true)
+    setBackupMsg(null)
+    try {
+      const total = await dbRestoreBackupToDb()
+      if (total === null) throw new Error('恢复失败，请确认已在桌面端运行且存在备份')
+      const loaded = await reloadFromSqlite()
+      await refreshDbInfo()
+      setBackupMsg(`恢复完成：数据库约 ${total} 条，界面已加载 ${loaded} 条`)
+    } catch (err) {
+      setBackupMsg(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBackupBusy(false)
+    }
   }
 
   return (
@@ -136,6 +278,107 @@ export function Settings() {
           用于生成日报、周报、月报，普通文本模型即可。
         </p>
       </div>
+      </section>
+
+      <section className="space-y-4 border-t border-gray-200 pt-5">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">数据源</h2>
+          <p className="mt-1 text-xs text-gray-500">选择活动记录来源：本地 ActivityWatch 秒级监控，或墨记定时截图 + AI 识别。</p>
+        </div>
+
+        <div>
+          <p className="block text-sm font-medium text-gray-700 mb-2">采集方式</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setDraft(d => ({ ...d, dataSource: 'aw' as const }))}
+              className={`px-3 py-2 rounded-lg text-sm border transition-colors ${
+                draft.dataSource === 'aw'
+                  ? 'bg-green-600 text-white border-green-600'
+                  : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
+              }`}
+            >
+              ActivityWatch（推荐）
+            </button>
+            <button
+              type="button"
+              onClick={() => setDraft(d => ({ ...d, dataSource: 'screenshot' as const }))}
+              className={`px-3 py-2 rounded-lg text-sm border transition-colors ${
+                draft.dataSource === 'screenshot'
+                  ? 'bg-green-600 text-white border-green-600'
+                  : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
+              }`}
+            >
+              截图 + AI 识别
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            {draft.dataSource === 'aw'
+              ? '从本机 ActivityWatch 拉取窗口时间线（秒级、零 API 费用、不上云），适合替代日常截屏。'
+              : '定时截屏并调用视觉模型识别活动内容，适合需要细粒度活动描述的场合（消耗 API 额度）。'}
+          </p>
+        </div>
+
+        {draft.dataSource === 'aw' && (
+          <>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label htmlFor="aw-host" className="block text-xs font-medium text-gray-700 mb-1">AW 地址</label>
+                <input
+                  id="aw-host"
+                  type="text"
+                  value={draft.awHost}
+                  onChange={e => setDraft(d => ({ ...d, awHost: e.target.value }))}
+                  placeholder="127.0.0.1"
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="aw-port" className="block text-xs font-medium text-gray-700 mb-1">端口</label>
+                <input
+                  id="aw-port"
+                  type="number"
+                  value={draft.awPort}
+                  onChange={e => setDraft(d => ({ ...d, awPort: Number(e.target.value) }))}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="aw-sync" className="block text-xs font-medium text-gray-700 mb-1">同步间隔(分钟)</label>
+                <input
+                  id="aw-sync"
+                  type="number"
+                  min={1}
+                  value={draft.awSyncMinutes}
+                  onChange={e => setDraft(d => ({ ...d, awSyncMinutes: Number(e.target.value) }))}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleTestAw}
+                disabled={awBusy}
+                className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 bg-white text-gray-700 hover:border-gray-400 disabled:opacity-50"
+              >
+                {awBusy ? '测试中...' : '测试连接'}
+              </button>
+              <button
+                type="button"
+                onClick={handleSyncAw}
+                disabled={awBusy}
+                className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {awBusy ? '同步中...' : '立即同步'}
+              </button>
+            </div>
+
+            {awStatus && <p className="text-xs text-gray-600">{awStatus}</p>}
+            {awSyncMsg && <p className="text-xs text-gray-600">{awSyncMsg}</p>}
+          </>
+        )}
       </section>
 
       <section className="space-y-4 border-t border-gray-200 pt-5">
@@ -248,6 +491,211 @@ export function Settings() {
           每行或逗号分隔一个关键词；命中的窗口不会发送给 AI。
         </p>
       </div>
+
+      <div>
+        <label htmlFor="excluded-apps" className="block text-sm font-medium text-gray-700 mb-1">
+          排除应用
+        </label>
+        <textarea
+          id="excluded-apps"
+          value={draft.excludedApps.join('\n')}
+          onChange={e => setDraft(d => ({
+            ...d,
+            excludedApps: e.target.value.split(/[\n,，]/).map(k => k.trim()).filter(Boolean),
+          }))}
+          rows={2}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+          placeholder={'1password\nBitwarden\nKeePassXC'}
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          命中进程名的窗口直接跳过，不截图也不分析。
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="excluded-titles" className="block text-sm font-medium text-gray-700 mb-1">
+          排除标题关键词
+        </label>
+        <textarea
+          id="excluded-titles"
+          value={draft.excludedTitlePatterns.join('\n')}
+          onChange={e => setDraft(d => ({
+            ...d,
+            excludedTitlePatterns: e.target.value.split(/[\n,，]/).map(k => k.trim()).filter(Boolean),
+          }))}
+          rows={2}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+          placeholder={'Lock Screen\nLogin'}
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          标题中包含这些关键词的窗口会跳过。
+        </p>
+      </div>
+      </section>
+
+      <section className="space-y-4 border-t border-gray-200 pt-5">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">界面背景</h2>
+          <p className="mt-1 text-xs text-gray-500">选择舒适的背景，同时保持内容清晰可读。</p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {([
+            { label: '默认', value: 'plain' as const, swatch: 'bg-gray-50 border border-gray-200' },
+            { label: '柔和绿', value: 'mint' as const, swatch: '' },
+            { label: '天空蓝', value: 'sky' as const, swatch: '' },
+            { label: '石墨灰', value: 'graphite' as const, swatch: '' },
+            { label: '自定义', value: 'custom' as const, swatch: 'bg-gray-50 border border-dashed border-gray-300' },
+          ]).map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setDraft(d => ({
+                ...d,
+                appearance: { ...d.appearance, backgroundPreset: opt.value },
+              }))}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                (draft.appearance?.backgroundPreset ?? 'plain') === opt.value
+                  ? 'border-green-600 bg-green-50 text-green-700'
+                  : 'border-gray-300 text-gray-600 hover:border-gray-400'
+              }`}
+            >
+              {opt.value === 'mint' && (
+                <span className="w-4 h-4 rounded" style={{ background: 'linear-gradient(135deg, #d4f5e9, #e8f5e9)' }} />
+              )}
+              {opt.value === 'sky' && (
+                <span className="w-4 h-4 rounded" style={{ background: 'linear-gradient(135deg, #dceefb, #e8f0fe)' }} />
+              )}
+              {opt.value === 'graphite' && (
+                <span className="w-4 h-4 rounded" style={{ background: 'linear-gradient(135deg, #e8eaed, #f1f3f4)' }} />
+              )}
+              {opt.value === 'plain' && <span className="w-4 h-4 rounded bg-gray-50 border border-gray-200" />}
+              {opt.value === 'custom' && <span className="w-4 h-4 rounded bg-gray-50 border border-dashed border-gray-300" />}
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {draft.appearance?.backgroundPreset === 'custom' && (
+          <div>
+            <label htmlFor="custom-bg" className="block text-sm font-medium text-gray-700 mb-1">
+              自定义图片
+            </label>
+            <input
+              id="custom-bg"
+              type="text"
+              value={draft.appearance?.customBackground ?? ''}
+              onChange={e => setDraft(d => ({
+                ...d,
+                appearance: { ...d.appearance, backgroundPreset: 'custom', customBackground: e.target.value },
+              }))}
+              placeholder="图片 URL 或 data: URI"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              填入本地图片路径或在线图片链接，保存在本机。
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-4 border-t border-gray-200 pt-5">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">数据管理</h2>
+          <p className="mt-1 text-xs text-gray-500">导入、导出或清空本机活动记录。</p>
+        </div>
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json,.md,.markdown"
+          className="hidden"
+          onChange={e => {
+            const file = e.target.files?.[0]
+            if (file) void handleImportFile(file)
+            // 重置 input，允许重复选同一个文件
+            e.target.value = ''
+          }}
+        />
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:border-gray-400 transition-colors"
+          >
+            导入数据
+          </button>
+          <button
+            type="button"
+            onClick={() => exportActivitiesAsJson(activities)}
+            disabled={activities.length === 0}
+            className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:border-gray-400 disabled:opacity-50 transition-colors"
+          >
+            导出 JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => exportActivitiesAsCompactMarkdown(activities)}
+            disabled={activities.length === 0}
+            className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:border-gray-400 disabled:opacity-50 transition-colors"
+          >
+            导出 Markdown
+          </button>
+        </div>
+
+        {importStatus && (
+          <p className="text-xs text-green-700">{importStatus}</p>
+        )}
+        {importError && (
+          <p className="text-xs text-red-600">{importError}</p>
+        )}
+      </section>
+
+      <section className="space-y-4 border-t border-gray-200 pt-5">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">数据库与备份</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            SQLite 与自动备份仅在桌面端生效；浏览器开发模式会降级到 localStorage。
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 space-y-1">
+          <p>状态：{dbStatus ?? (sqliteReady ? '检测中…' : '未连接')}</p>
+          <p>本地备份文件：{backupExists ? '已存在' : '尚无'}</p>
+          <p>自动备份：就绪后每 30 秒写入一次</p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void handleBackupNow()}
+            disabled={backupBusy || !sqliteReady}
+            className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:border-gray-400 disabled:opacity-50 transition-colors"
+          >
+            {backupBusy ? '处理中…' : '立即备份'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleRestoreBackup()}
+            disabled={backupBusy || !sqliteReady || !backupExists}
+            className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:border-gray-400 disabled:opacity-50 transition-colors"
+          >
+            从备份恢复
+          </button>
+          <button
+            type="button"
+            onClick={() => void refreshDbInfo()}
+            disabled={backupBusy}
+            className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:border-gray-400 disabled:opacity-50 transition-colors"
+          >
+            刷新诊断
+          </button>
+        </div>
+
+        {backupMsg && (
+          <p className="text-xs text-gray-700">{backupMsg}</p>
+        )}
       </section>
 
       <button

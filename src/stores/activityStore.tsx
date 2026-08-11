@@ -1,4 +1,20 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
+import {
+  dbSaveActivity,
+  dbLoadActivities,
+  dbDeleteActivity,
+  dbClearActivities,
+  dbSaveBackup,
+  dbFetchAwEvents,
+  isSqliteAvailable,
+} from '../utils/db'
+
+export type BackgroundPreset = 'plain' | 'mint' | 'sky' | 'graphite' | 'custom'
+
+export interface Appearance {
+  backgroundPreset: BackgroundPreset
+  customBackground?: string
+}
 
 export interface Activity {
   id: string
@@ -10,6 +26,8 @@ export interface Activity {
   screenshotBase64?: string
 }
 
+export type DataSource = 'screenshot' | 'aw'
+
 export interface Settings {
   apiKey: string
   intervalSeconds: number
@@ -19,19 +37,33 @@ export interface Settings {
   analysisModel: string
   reportModel: string
   excludedKeywords: string[]
+  excludedApps: string[]
+  excludedTitlePatterns: string[]
   saveScreenshotThumbnails: boolean
+  appearance: Appearance
+  dataSource: DataSource
+  awHost: string
+  awPort: number
+  awSyncMinutes: number
 }
 
 interface ActivityStore {
   activities: Activity[]
   settings: Settings
   isAnalyzing: boolean
+  sqliteReady: boolean
   addActivity: (activity: Omit<Activity, 'id' | 'timestamp'>) => void
+  /** 导入用：保留原始 id / timestamp */
+  importActivity: (activity: Activity) => boolean
   updateActivity: (id: string, partial: Partial<Omit<Activity, 'id' | 'timestamp'>>) => void
   removeActivity: (id: string) => void
   clearActivities: () => void
+  /** 从 SQLite 重新加载（备份恢复后用） */
+  reloadFromSqlite: () => Promise<number>
   updateSettings: (partial: Partial<Settings>) => void
   setIsAnalyzing: (v: boolean) => void
+  /** 从 ActivityWatch 拉取数据并写入活动记录，返回新增条数 */
+  syncFromAw: () => Promise<number>
 }
 
 const ACTIVITY_CATEGORIES = ['dev', 'meeting', 'doc', 'communication', 'other'] as const
@@ -45,7 +77,14 @@ const DEFAULT_SETTINGS: Settings = {
   analysisModel: 'qwen3-vl-plus',
   reportModel: 'qwen3.7-max',
   excludedKeywords: ['Password', 'Token', 'Bank', '钱包', '验证码', '密钥'],
+  excludedApps: [],
+  excludedTitlePatterns: [],
   saveScreenshotThumbnails: false,
+  appearance: { backgroundPreset: 'plain' },
+  dataSource: 'screenshot',
+  awHost: '127.0.0.1',
+  awPort: 5600,
+  awSyncMinutes: 5,
 }
 
 const LEGACY_DEFAULT_EXCLUDED_KEYWORDS = ['微信', 'WeChat', 'QQ', 'Mail', '邮箱', 'Password', 'Token', 'Bank']
@@ -55,6 +94,47 @@ const SETTINGS_KEY = 'xiaohei-settings'
 
 function createActivityId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+}
+
+/** AW 窗口标题/应用 → 墨记分类（关键词规则，零成本替代 AI 识别） */
+const CATEGORY_RULES: Array<{ category: Activity['category']; patterns: RegExp }> = [
+  { category: 'dev', patterns: /vscode|code\.exe|visual studio|terminal|cmd|powershell|git|github|jetbrains|pycharm|webstorm|idea|claude|codex|docker|sql|python|node|chrome.*devtools|localhost|127\.0\.0\.1|:3000|:1420/i },
+  { category: 'doc', patterns: /word|document|wps|notion|obsidian|typora|markdown|\.md|excel|ppt|pdf|readme|笔记|文档|写作|墨记/i },
+  { category: 'communication', patterns: /微信|wechat|qq|dingtalk|钉钉|飞书|feishu|lark|slack|telegram|discord|企业微信|whatsapp|邮箱|mail|outlook|163|gmail/i },
+  { category: 'meeting', patterns: /zoom|腾讯会议|meeting|teams|meet|会议|语音|直播|bilibili|抖音|虎牙|youtube|视频/i },
+]
+
+export function classifyAwWindow(app: string, title: string): Activity['category'] {
+  const haystack = `${app} ${title}`
+  for (const rule of CATEGORY_RULES) {
+    if (rule.patterns.test(haystack)) return rule.category
+  }
+  return 'other'
+}
+
+/** 把 AW 事件转成墨记活动；重复窗口短停留直接过滤 */
+export function awEventToActivity(event: {
+  timestamp: string
+  duration: number
+  data: { app?: string; title?: string }
+}): Omit<Activity, 'id' | 'timestamp'> | null {
+  const app = (event.data?.app || '未知应用').trim()
+  const title = (event.data?.title || '').trim()
+  if (!app && !title) return null
+  // 少于 10 秒的窗口切换不记录，避免噪音
+  if (event.duration < 10) return null
+
+  const category = classifyAwWindow(app, title)
+  const durationText = event.duration >= 60
+    ? `（${Math.round(event.duration / 60)} 分钟）`
+    : `（${Math.round(event.duration)} 秒）`
+
+  return {
+    category,
+    app,
+    title,
+    description: title ? `${title}${durationText}` : `${app}${durationText}`,
+  }
 }
 
 function isActivityCategory(value: unknown): value is Activity['category'] {
@@ -86,6 +166,20 @@ function normalizeActivity(value: unknown): Activity | null {
     description: normalizeString(item.description, '无描述').trim() || '无描述',
     ...(screenshotBase64 ? { screenshotBase64 } : {}),
   }
+}
+
+const VALID_BG_PRESETS: BackgroundPreset[] = ['plain', 'mint', 'sky', 'graphite', 'custom']
+
+function normalizeAppearance(value: unknown): Appearance {
+  if (!value || typeof value !== 'object') return DEFAULT_SETTINGS.appearance
+  const a = value as Partial<Appearance>
+  const backgroundPreset: BackgroundPreset = (VALID_BG_PRESETS as string[]).includes(a.backgroundPreset as string)
+    ? a.backgroundPreset as BackgroundPreset
+    : DEFAULT_SETTINGS.appearance.backgroundPreset
+  const customBackground = typeof a.customBackground === 'string' && a.customBackground.trim()
+    ? a.customBackground
+    : undefined
+  return { backgroundPreset, ...(customBackground ? { customBackground } : {}) }
 }
 
 function normalizeExcludedKeywords(value: unknown): string[] {
@@ -146,7 +240,18 @@ function loadSettings(): Settings {
         : DEFAULT_SETTINGS.intervalSeconds,
       maxWindowsPerCapture: normalizeMaxWindowsPerCapture(saved.maxWindowsPerCapture),
       autoStart: Boolean(saved.autoStart),
+      excludedApps: Array.isArray(saved.excludedApps)
+        ? saved.excludedApps.filter((k: unknown): k is string => typeof k === 'string' && k.trim().length > 0).map((k: string) => k.trim())
+        : DEFAULT_SETTINGS.excludedApps,
+      excludedTitlePatterns: Array.isArray(saved.excludedTitlePatterns)
+        ? saved.excludedTitlePatterns.filter((k: unknown): k is string => typeof k === 'string' && k.trim().length > 0).map((k: string) => k.trim())
+        : DEFAULT_SETTINGS.excludedTitlePatterns,
       saveScreenshotThumbnails: Boolean(saved.saveScreenshotThumbnails),
+      appearance: normalizeAppearance(saved.appearance),
+      dataSource: saved.dataSource === 'aw' ? 'aw' : 'screenshot',
+      awHost: typeof saved.awHost === 'string' && saved.awHost.trim() ? saved.awHost.trim() : DEFAULT_SETTINGS.awHost,
+      awPort: Number.isFinite(saved.awPort) && saved.awPort > 0 ? Math.round(saved.awPort) : DEFAULT_SETTINGS.awPort,
+      awSyncMinutes: Number.isFinite(saved.awSyncMinutes) && saved.awSyncMinutes > 0 ? Math.round(saved.awSyncMinutes) : DEFAULT_SETTINGS.awSyncMinutes,
     }
   } catch {
     return DEFAULT_SETTINGS
@@ -189,6 +294,53 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
   }, [settings])
 
+  // SQLite 启动加载 / 迁移
+  const sqliteReadyRef = useRef(false)
+  const [sqliteReady, setSqliteReady] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const available = await isSqliteAvailable()
+      if (cancelled) return
+      setSqliteReady(available)
+      if (!available) return
+      sqliteReadyRef.current = true
+      try {
+        const sqliteData = await dbLoadActivities()
+        if (cancelled || !sqliteData) return
+        if (sqliteData.length > 0) {
+          // SQLite 有数据，用它覆盖 localStorage（优先信任 SQLite）
+          const mapped: Activity[] = sqliteData.map(a => normalizeActivity({
+            id: a.id,
+            timestamp: a.timestamp,
+            category: a.category,
+            app: a.app_name,
+            title: a.title ?? '',
+            description: a.description,
+            screenshotBase64: a.screenshot_base64 ?? undefined,
+          })).filter((a): a is Activity => a !== null)
+          setActivities(mapped)
+        } else {
+          // SQLite 空但 localStorage 有数据 → 迁移
+          const local = loadActivities()
+          if (local.length > 0) {
+            // Bulk import via Rust command
+            const { dbImportActivities } = await import('../utils/db')
+            await dbImportActivities(JSON.stringify(local))
+          }
+        }
+      } catch {
+        sqliteReadyRef.current = false
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  const saveToSqlite = useCallback((activity: Activity) => {
+    if (!sqliteReady) return
+    void dbSaveActivity(activity).catch(() => {})
+  }, [sqliteReady])
+
   const addActivity = useCallback((activity: Omit<Activity, 'id' | 'timestamp'>) => {
     const newActivity: Activity = {
       ...activity,
@@ -196,30 +348,127 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       timestamp: new Date().toISOString(),
     }
     setActivities(prev => [newActivity, ...prev])
-  }, [])
+    saveToSqlite(newActivity)
+  }, [saveToSqlite])
+
+  const importActivity = useCallback((activity: Activity): boolean => {
+    const normalized = normalizeActivity(activity)
+    if (!normalized) return false
+    // 用 ref 读当前列表，避免 setState 异步导致返回值不可靠
+    if (activitiesRef.current.some(a => a.id === normalized.id)) return false
+    setActivities(prev => {
+      if (prev.some(a => a.id === normalized.id)) return prev
+      return [normalized, ...prev]
+    })
+    saveToSqlite(normalized)
+    return true
+  }, [saveToSqlite])
 
   const updateActivity = useCallback((id: string, partial: Partial<Omit<Activity, 'id' | 'timestamp'>>) => {
-    setActivities(prev => prev.map(activity => (
-      activity.id === id ? { ...activity, ...partial } : activity
-    )))
-  }, [])
+    setActivities(prev => {
+      const next = prev.map(activity =>
+        activity.id === id ? { ...activity, ...partial } : activity,
+      )
+      const updated = next.find(a => a.id === id)
+      if (updated) saveToSqlite(updated)
+      return next
+    })
+  }, [saveToSqlite])
 
   const removeActivity = useCallback((id: string) => {
     setActivities(prev => prev.filter(a => a.id !== id))
-  }, [])
+    if (sqliteReady) void dbDeleteActivity(id).catch(() => {})
+  }, [sqliteReady])
 
   const clearActivities = useCallback(() => {
     setActivities([])
-  }, [])
+    if (sqliteReady) void dbClearActivities().catch(() => {})
+  }, [sqliteReady])
+
+  const reloadFromSqlite = useCallback(async (): Promise<number> => {
+    if (!sqliteReady) return 0
+    const sqliteData = await dbLoadActivities()
+    if (!sqliteData) return 0
+    const mapped: Activity[] = sqliteData.map(a => normalizeActivity({
+      id: a.id,
+      timestamp: a.timestamp,
+      category: a.category,
+      app: a.app_name,
+      title: a.title ?? '',
+      description: a.description,
+      screenshotBase64: a.screenshot_base64 ?? undefined,
+    })).filter((a): a is Activity => a !== null)
+    setActivities(mapped)
+    return mapped.length
+  }, [sqliteReady])
+
+  // 定期自动备份 SQLite（30 秒间隔）
+  const backupTimerRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!sqliteReady) return
+    backupTimerRef.current = window.setInterval(() => {
+      void dbSaveBackup().catch(() => {})
+    }, 30000)
+    return () => {
+      if (backupTimerRef.current !== null) {
+        window.clearInterval(backupTimerRef.current)
+      }
+    }
+  }, [sqliteReady])
 
   const updateSettings = useCallback((partial: Partial<Settings>) => {
     setSettings(prev => ({ ...prev, ...partial }))
   }, [])
 
+  /** 从 ActivityWatch 同步：拉事件 → 转活动 → 去重写入 */
+  const syncFromAw = useCallback(async (): Promise<number> => {
+    let added = 0
+    try {
+      const result = await dbFetchAwEvents({
+        host: settings.awHost,
+        port: settings.awPort,
+        limit: 2000,
+      })
+      if (!result) return 0
+
+      // 已有记录 key 集合（app::title::分钟）用于去重
+      const existingKeys = new Set(
+        activitiesRef.current.map(a => `${a.app}::${a.title}::${Math.round(new Date(a.timestamp).getTime() / 60000)}`),
+      )
+
+      const now = Date.now()
+      for (const event of result.events) {
+        const activity = awEventToActivity(event)
+        if (!activity) continue
+
+        // 用事件时间戳作为记录时间（AW 返回 ISO 字符串）
+        const eventTime = event.timestamp ? new Date(event.timestamp) : new Date(now)
+        if (Number.isNaN(eventTime.getTime())) continue
+        const key = `${activity.app}::${activity.title}::${Math.round(eventTime.getTime() / 60000)}`
+        if (existingKeys.has(key)) continue
+        existingKeys.add(key)
+
+        const newActivity: Activity = {
+          ...activity,
+          id: createActivityId(),
+          timestamp: eventTime.toISOString(),
+        }
+        setActivities(prev => [newActivity, ...prev])
+        saveToSqlite(newActivity)
+        added++
+      }
+      return added
+    } catch (err) {
+      console.error('AW sync failed:', err)
+      return added
+    }
+  }, [settings.awHost, settings.awPort, saveToSqlite])
+
   return (
     <ActivityContext.Provider value={{
-      activities, settings, isAnalyzing,
-      addActivity, updateActivity, removeActivity, clearActivities, updateSettings, setIsAnalyzing,
+      activities, settings, isAnalyzing, sqliteReady,
+      addActivity, importActivity, updateActivity, removeActivity, clearActivities,
+      reloadFromSqlite, updateSettings, setIsAnalyzing, syncFromAw,
     }}>
       {children}
     </ActivityContext.Provider>

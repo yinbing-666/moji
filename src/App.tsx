@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { ActivityProvider, useActivityStore, type Activity } from './stores/activityStore'
+import { useEffect, useMemo, useState } from 'react'
+import { ActivityProvider, useActivityStore, type Activity, type BackgroundPreset } from './stores/activityStore'
 import { Settings } from './components/Settings'
 import { ActivityTimeline } from './components/ActivityTimeline'
 import { ReportView } from './components/ReportView'
@@ -18,10 +18,22 @@ function isToday(iso: string) {
 }
 
 function Dashboard() {
-  const { activities, isAnalyzing, settings } = useActivityStore()
+  const { activities, isAnalyzing, settings, syncFromAw } = useActivityStore()
   const { isRunning, isCapturing, latestScreenshot, error, start, stop, captureNow } = useAutoCapture()
   const [tab, setTab] = useState<'timeline' | 'report'>('timeline')
   const isConfigured = Boolean(settings.apiKey.trim() && settings.baseUrl.trim())
+  const isAwMode = settings.dataSource === 'aw'
+
+  // AW 模式：按配置间隔自动同步（无需 API Key）
+  useEffect(() => {
+    if (!isAwMode) return
+    void syncFromAw().catch(() => {})
+    const minutes = Math.max(1, settings.awSyncMinutes || 5)
+    const timer = window.setInterval(() => {
+      void syncFromAw().catch(() => {})
+    }, minutes * 60 * 1000)
+    return () => window.clearInterval(timer)
+  }, [isAwMode, settings.awSyncMinutes, syncFromAw])
 
   const todaySummary = useMemo(() => {
     const todayActivities = activities.filter(activity => isToday(activity.timestamp))
@@ -49,13 +61,21 @@ function Dashboard() {
       stop()
       return
     }
+    if (isAwMode) {
+      // AW 模式：无需截图，手动触发一次同步
+      void syncFromAw().catch(() => {})
+      return
+    }
     if (isConfigured) {
       start()
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div
+      className="min-h-screen pb-20"
+      style={{ background: 'var(--app-bg, #f9fafb)' }}
+    >
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between max-w-4xl mx-auto gap-4">
           <div className="flex items-center gap-3">
@@ -70,7 +90,12 @@ function Dashboard() {
 
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-sm">
-              {isRunning ? (
+              {isAwMode ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-green-500" />
+                  <span className="text-gray-600">AW 同步中</span>
+                </>
+              ) : isRunning ? (
                 <>
                   <span className={`w-2 h-2 rounded-full ${isAnalyzing ? 'bg-yellow-400 animate-pulse' : 'bg-green-500'}`} />
                   <span className="text-gray-600">
@@ -88,14 +113,14 @@ function Dashboard() {
             <button
               type="button"
               onClick={handleCaptureToggle}
-              disabled={!isRunning && !isConfigured}
+              disabled={!isRunning && !isAwMode && !isConfigured}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 isRunning
                   ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
                   : 'bg-green-600 text-white hover:bg-green-700'
               }`}
             >
-              {isRunning ? '停止' : '开始截图'}
+              {isAwMode ? '立即同步' : isRunning ? '停止' : '开始截图'}
             </button>
           </div>
         </div>
@@ -109,7 +134,7 @@ function Dashboard() {
         </div>
       )}
 
-      {!isConfigured && (
+      {!isConfigured && !isAwMode && (
         <div className="max-w-4xl mx-auto mt-4 px-6">
           <div role="status" className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
             开始截图前，请先在设置里配置 API Key 和 Base URL。
@@ -146,7 +171,9 @@ function Dashboard() {
                 <>
                   <p className="mt-1 text-sm font-medium text-gray-900">暂无最近活动</p>
                   <p className="mt-0.5 text-sm text-gray-500">
-                    配置完成后，可以手动截一次图验证识别效果。
+                    {isAwMode
+                      ? '等待 ActivityWatch 数据同步，或点右上角「立即同步」。'
+                      : '配置完成后，可以手动截一次图验证识别效果。'}
                   </p>
                 </>
               )}
@@ -154,7 +181,7 @@ function Dashboard() {
             <button
               type="button"
               onClick={() => void captureNow()}
-              disabled={!isConfigured || isCapturing || isAnalyzing}
+              disabled={isAwMode || !isConfigured || isCapturing || isAnalyzing}
               className="shrink-0 rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isCapturing || isAnalyzing ? '处理中' : '立即截图'}
@@ -204,7 +231,10 @@ function Dashboard() {
 
 function SettingsPage() {
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div
+      className="min-h-screen pb-20"
+      style={{ background: 'var(--app-bg, #f9fafb)' }}
+    >
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-lg font-semibold text-gray-900">设置</h1>
@@ -219,8 +249,28 @@ function SettingsPage() {
   )
 }
 
+const BG_GRADIENTS: Record<BackgroundPreset, string> = {
+  plain: '',
+  mint: 'linear-gradient(135deg, #d4f5e9 0%, #e8f5e9 50%, #f0f7f4 100%)',
+  sky: 'linear-gradient(135deg, #dceefb 0%, #e8f0fe 50%, #f0f4f8 100%)',
+  graphite: 'linear-gradient(135deg, #e8eaed 0%, #f1f3f4 50%, #f8f9fa 100%)',
+  custom: '',
+}
+
 function AppShell() {
+  const { settings } = useActivityStore()
   const [page, setPage] = useState<'dashboard' | 'settings'>('dashboard')
+
+  // 同步背景到 CSS 变量
+  useEffect(() => {
+    const preset = settings.appearance?.backgroundPreset ?? 'plain'
+    const bg = preset === 'custom'
+      ? settings.appearance?.customBackground
+        ? `url(${settings.appearance.customBackground}) center / cover fixed`
+        : ''
+      : BG_GRADIENTS[preset]
+    document.documentElement.style.setProperty('--app-bg', bg || 'none')
+  }, [settings.appearance])
 
   return (
     <>
