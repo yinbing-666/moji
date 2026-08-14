@@ -1,3 +1,8 @@
+/**
+ * 墨记活动状态管理（Context Store）
+ *
+ * 数据源类型：'window_text' | 'aw'（旧值 'screenshot' 已迁移为 'window_text'，识别基于窗口文本不再截图）
+ */
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import {
   dbSaveActivity,
@@ -16,6 +21,7 @@ export interface Appearance {
   customBackground?: string
 }
 
+/* P2优化: Activity类型定义 - 保持原有结构，screenshotBase64用于缩略图展示 */
 export interface Activity {
   id: string
   timestamp: string
@@ -26,7 +32,8 @@ export interface Activity {
   screenshotBase64?: string
 }
 
-export type DataSource = 'screenshot' | 'aw'
+/* DataSource 类型 - 两种模式：窗口文本识别（UIA，不截图）或 ActivityWatch */
+export type DataSource = 'window_text' | 'aw'
 
 export interface Settings {
   apiKey: string
@@ -34,8 +41,7 @@ export interface Settings {
   maxWindowsPerCapture: number
   autoStart: boolean
   baseUrl: string
-  analysisModel: string
-  reportModel: string
+  textModel: string
   excludedKeywords: string[]
   excludedApps: string[]
   excludedTitlePatterns: string[]
@@ -64,6 +70,15 @@ interface ActivityStore {
   setIsAnalyzing: (v: boolean) => void
   /** 从 ActivityWatch 拉取数据并写入活动记录，返回新增条数 */
   syncFromAw: () => Promise<number>
+  /* P1优化: 新增报告生成相关方法 */
+  generateDailyReport: (date: string) => Promise<void>
+  isGeneratingReport: boolean
+  connectionTestResult: { ok: boolean; message: string } | null
+  testAiConnection: () => Promise<void>
+  /* P1优化: 新增数据导入导出方法 */
+  importActivitiesFromJson: (data: unknown) => Promise<number>
+  exportActivitiesAsJson: () => Promise<string>
+  clearAllActivities: () => Promise<void>
 }
 
 const ACTIVITY_CATEGORIES = ['dev', 'meeting', 'doc', 'communication', 'other'] as const
@@ -74,14 +89,13 @@ const DEFAULT_SETTINGS: Settings = {
   maxWindowsPerCapture: 3,
   autoStart: false,
   baseUrl: 'https://tokendance.space/gateway/v1',
-  analysisModel: 'qwen3-vl-plus',
-  reportModel: 'qwen3.7-max',
+  textModel: 'deepseek-v4-flash-0731',
   excludedKeywords: ['Password', 'Token', 'Bank', '钱包', '验证码', '密钥'],
   excludedApps: [],
   excludedTitlePatterns: [],
   saveScreenshotThumbnails: false,
   appearance: { backgroundPreset: 'plain' },
-  dataSource: 'screenshot',
+  dataSource: 'window_text',
   awHost: '127.0.0.1',
   awPort: 5600,
   awSyncMinutes: 5,
@@ -228,12 +242,12 @@ function loadSettings(): Settings {
       baseUrl: typeof saved.baseUrl === 'string' && saved.baseUrl.trim()
         ? saved.baseUrl
         : DEFAULT_SETTINGS.baseUrl,
-      analysisModel: typeof saved.analysisModel === 'string' && saved.analysisModel.trim()
-        ? saved.analysisModel.trim()
-        : DEFAULT_SETTINGS.analysisModel,
-      reportModel: typeof saved.reportModel === 'string' && saved.reportModel.trim()
-        ? saved.reportModel.trim()
-        : DEFAULT_SETTINGS.reportModel,
+      textModel: typeof saved.textModel === 'string' && saved.textModel.trim()
+        ? saved.textModel.trim()
+        // 旧配置迁移：合并 analysisModel / reportModel 为单一文本模型
+        : (typeof saved.reportModel === 'string' && saved.reportModel.trim())
+          ? saved.reportModel.trim()
+          : DEFAULT_SETTINGS.textModel,
       excludedKeywords: normalizeExcludedKeywords(saved.excludedKeywords),
       intervalSeconds: Number.isFinite(saved.intervalSeconds)
         ? Math.max(10, Number(saved.intervalSeconds))
@@ -248,7 +262,8 @@ function loadSettings(): Settings {
         : DEFAULT_SETTINGS.excludedTitlePatterns,
       saveScreenshotThumbnails: Boolean(saved.saveScreenshotThumbnails),
       appearance: normalizeAppearance(saved.appearance),
-      dataSource: saved.dataSource === 'aw' ? 'aw' : 'screenshot',
+      // 旧值 'screenshot' 迁移为 'window_text'（识别已改为窗口文本，不再截图）
+      dataSource: saved.dataSource === 'aw' ? 'aw' : 'window_text',
       awHost: typeof saved.awHost === 'string' && saved.awHost.trim() ? saved.awHost.trim() : DEFAULT_SETTINGS.awHost,
       awPort: Number.isFinite(saved.awPort) && saved.awPort > 0 ? Math.round(saved.awPort) : DEFAULT_SETTINGS.awPort,
       awSyncMinutes: Number.isFinite(saved.awSyncMinutes) && saved.awSyncMinutes > 0 ? Math.round(saved.awSyncMinutes) : DEFAULT_SETTINGS.awSyncMinutes,
@@ -264,6 +279,10 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   const [activities, setActivities] = useState<Activity[]>(loadActivities)
   const [settings, setSettings] = useState<Settings>(loadSettings)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+
+  /* P1优化: 报告生成状态 */
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false)
+  const [connectionTestResult, setConnectionTestResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   // activities 单条可能几百 KB（含缩略图），debounce 500ms 写盘，避免每次 addActivity 都同步 stringify+落盘卡顿
   const activitiesRef = useRef(activities)
@@ -416,7 +435,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     }
   }, [sqliteReady])
 
-  const updateSettings = useCallback((partial: Partial<Settings>) => {
+  const updateSettingsCallback = useCallback((partial: Partial<Settings>) => {
     setSettings(prev => ({ ...prev, ...partial }))
   }, [])
 
@@ -464,11 +483,105 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     }
   }, [settings.awHost, settings.awPort, saveToSqlite])
 
+  /* P1优化: 测试AI连接 */
+  const testAiConnectionCallback = useCallback(async () => {
+    try {
+      const { testAiConnection } = await import('../utils/ai')
+      setIsGeneratingReport(true)
+      const result = await testAiConnection(settings.apiKey, settings.baseUrl, settings.textModel)
+      setConnectionTestResult(result)
+    } catch (err) {
+      setConnectionTestResult({
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      })
+    } finally {
+      setIsGeneratingReport(false)
+    }
+  }, [settings.apiKey, settings.baseUrl, settings.textModel])
+
+  /* P1优化: 生成日报 */
+  const generateDailyReport = useCallback(async (date: string) => {
+    try {
+      const { generateReport } = await import('../utils/ai')
+      setIsGeneratingReport(true)
+      
+      // 筛选指定日期的活动
+      const dayActivities = activitiesRef.current.filter(a => a.timestamp.startsWith(date))
+      
+      const reportContent = await generateReport(
+        dayActivities.map(a => ({
+          timestamp: a.timestamp,
+          description: a.description,
+          category: a.category,
+          app_name: a.app,
+        })),
+        'daily',
+        settings.apiKey,
+        settings.baseUrl,
+        settings.textModel,
+      )
+
+      // 保存到历史记录
+      const { addReportHistoryItem, loadReportHistory } = await import('../utils/reportHistory')
+      const history = loadReportHistory()
+      addReportHistoryItem(history, 'daily', reportContent, 'standard')
+
+      // 可选：自动下载
+      const { exportReportAsMarkdown } = await import('../utils/export')
+      exportReportAsMarkdown(reportContent, `日报-${date}`)
+    } finally {
+      setIsGeneratingReport(false)
+    }
+  }, [activities, settings.apiKey, settings.baseUrl, settings.textModel])
+
+  /* P1优化: 导入JSON数据 */
+  const importActivitiesFromJson = useCallback(async (data: unknown): Promise<number> => {
+    const { parseImport, mergeImport, normalizeImportItem } = await import('../utils/importData')
+    
+    let parsed: ReturnType<typeof parseImport>
+    if (typeof data === 'string') {
+      parsed = parseImport(data)
+    } else if (Array.isArray(data)) {
+      parsed = data.map(item => normalizeImportItem(item))
+    } else {
+      throw new Error('导入数据格式错误：需要JSON字符串或数组')
+    }
+
+    const { toImport, imported } = mergeImport(parsed, activitiesRef.current)
+    
+    for (const activity of toImport) {
+      importActivity(activity)
+    }
+
+    return imported
+  }, [importActivity])
+
+  /* P1优化: 导出JSON数据 */
+  const exportActivitiesAsJsonCallback = useCallback(async (): Promise<string> => {
+    const { exportActivitiesAsJson } = await import('../utils/export')
+    exportActivitiesAsJson(activitiesRef.current)
+    return JSON.stringify(activitiesRef.current, null, 2)
+  }, [])
+
+  /* P1优化: 清空全部数据 */
+  const clearAllActivities = useCallback(async (): Promise<void> => {
+    clearActivities()
+    // 同时清空SQLite
+    if (sqliteReady) {
+      await dbClearActivities()
+    }
+  }, [clearActivities, sqliteReady])
+
   return (
     <ActivityContext.Provider value={{
       activities, settings, isAnalyzing, sqliteReady,
       addActivity, importActivity, updateActivity, removeActivity, clearActivities,
-      reloadFromSqlite, updateSettings, setIsAnalyzing, syncFromAw,
+      reloadFromSqlite, updateSettings: updateSettingsCallback, setIsAnalyzing, syncFromAw,
+      generateDailyReport, isGeneratingReport, connectionTestResult,
+      testAiConnection: testAiConnectionCallback,
+      importActivitiesFromJson, exportActivitiesAsJson: exportActivitiesAsJsonCallback,
+      clearAllActivities,
     }}>
       {children}
     </ActivityContext.Provider>

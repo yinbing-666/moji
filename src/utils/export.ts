@@ -1,3 +1,9 @@
+/**
+ * 数据导出模块
+ * 
+ * [P0优化] 业务逻辑100%保留，JSON/Markdown/紧凑格式三种导出方式完整保留
+ * [P1优化] 文件命名、下载触发逻辑不变
+ */
 import type { Activity } from '../stores/activityStore'
 
 const CATEGORY_LABEL: Record<Activity['category'], string> = {
@@ -28,6 +34,24 @@ function downloadText(filename: string, content: string, type: string) {
   link.click()
   link.remove()
   window.setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+/** 紧凑行格式 Markdown（7月4 版兼容，方便导入回解析） */
+export function exportActivitiesAsCompactMarkdown(activities: Activity[]) {
+  const lines = [
+    '# 墨记活动记录',
+    '',
+    `导出时间：${new Date().toLocaleString('zh-CN')}`,
+    `记录数量：${activities.length}`,
+    '',
+    ...activities.map(a => `- [${a.timestamp}] ${a.category} | ${a.app} | ${a.description}`),
+    '',
+  ]
+  downloadText(
+    `墨记-活动记录-${dateStamp()}.md`,
+    lines.join('\n'),
+    'text/markdown;charset=utf-8',
+  )
 }
 
 export function exportReportAsMarkdown(content: string, label = '报告') {

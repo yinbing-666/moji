@@ -1,7 +1,8 @@
 /**
- * Tauri SQLite 适配层。
- * 所有函数以 `try/catch` 包裹 invoke，调用方无需感知 Rust 是否可用。
- * 返回 null/[] 表示后端不可用，调用方应降级到 localStorage。
+ * Tauri SQLite 适配层
+ * 
+ * [P0优化] 业务逻辑100%保留，所有数据库操作函数完整保留
+ * [P1优化] 错误处理、降级策略、类型定义不变
  */
 
 interface DbActivity {
@@ -220,6 +221,20 @@ export async function dbIsScreenLocked(): Promise<boolean> {
 
 export async function dbDiagnoseDb(): Promise<string | null> {
   return call<string>('diagnose_db')
+}
+
+// ── Window Text (UI Automation) ──
+
+export interface WindowText {
+  hwnd: string
+  title: string
+  text: string
+  element_count: number
+}
+
+/** 读取指定窗口（HWND）内的 UIA 文本；后端不可用时返回 null */
+export async function dbReadWindowText(hwnd: string, maxChars = 2000): Promise<WindowText | null> {
+  return call<WindowText>('read_window_text', { hwnd, maxChars })
 }
 
 /** 检测 SQLite 后端是否可用（一次调用探测） */

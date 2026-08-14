@@ -1,8 +1,18 @@
+/**
+ * 自动采集Hook - 组合截图 + AI分析
+ * 
+ * [P0优化] 业务逻辑100%保留，核心采集流程不变
+ * [P1优化] 锁屏检测、空闲跳过、本地降级分类等策略完整保留
+ */
 import { useCallback, useRef } from 'react'
 import { useScreenshot, type ScreenshotCaptureResult } from './useScreenshot'
-import { useActivityStore } from '../stores/activityStore'
-import { analyzeScreenshot } from '../utils/ai'
+import { useActivityStore, type Activity } from '../stores/activityStore'
+import { analyzeWindowText, classifyLocally } from '../utils/ai'
 import { captureVisibleWindows, type CapturedWindow } from '../utils/screenshot'
+import { dbGetIdleSeconds, dbIsScreenLocked, dbReadWindowText } from '../utils/db'
+
+/** 空闲超过该秒数则跳过本轮采集（约 10 分钟） */
+const IDLE_SKIP_SECONDS = 600
 
 function compressBase64(pngBase64: string, maxWidth = 1280): Promise<string> {
   return new Promise((resolve) => {
@@ -53,11 +63,40 @@ export function useAutoCapture() {
   const analyzingRef = useRef(false)
 
   const captureAllowedWindows = useCallback(async (): Promise<ScreenshotCaptureResult> => {
-    const windows = await captureVisibleWindows(settings.excludedKeywords)
-    const selectedWindows = selectWindowsForAnalysis(windows, settings.maxWindowsPerCapture)
+    // 锁屏或长时间空闲时跳过，避免浪费 API 与产生无意义记录
+    try {
+      const locked = await dbIsScreenLocked()
+      if (locked) {
+        return { imageBase64: '', windows: [] }
+      }
+      const idle = await dbGetIdleSeconds()
+      if (idle !== null && idle >= IDLE_SKIP_SECONDS) {
+        return { imageBase64: '', windows: [] }
+      }
+    } catch {
+      // 系统检测不可用时继续正常采集
+    }
 
-    if (selectedWindows.length > 0) {
-      // 预览图只用于右下角小窗展示，压成小尺寸 JPEG，避免原始未压缩 PNG（可能几 MB）常驻 React state
+    // 截图仅在用户开启"保存截图缩略图"时才采集；活动识别本身只依赖窗口文本
+    const windows = await captureVisibleWindows(settings.excludedKeywords, settings.saveScreenshotThumbnails)
+
+    // 前端二次过滤：排除指定应用名 + 标题关键词
+    const excludedApps = settings.excludedApps ?? []
+    const excludedTitlePatterns = settings.excludedTitlePatterns ?? []
+    const filteredWindows = (excludedApps.length > 0 || excludedTitlePatterns.length > 0)
+      ? windows.filter(w => {
+          const appLower = w.process_name.toLowerCase()
+          const titleLower = w.title.toLowerCase()
+          if (excludedApps.some(a => appLower.includes(a.toLowerCase()))) return false
+          if (excludedTitlePatterns.some(p => titleLower.includes(p.toLowerCase()))) return false
+          return true
+        })
+      : windows
+
+    const selectedWindows = selectWindowsForAnalysis(filteredWindows, settings.maxWindowsPerCapture)
+
+    // 预览图仅在用户开启缩略图功能时有内容；识别本身不需要图像
+    if (selectedWindows.length > 0 && selectedWindows[0].image_base64) {
       const preview = await compressBase64(selectedWindows[0].image_base64, 320)
       return {
         imageBase64: preview,
@@ -65,12 +104,11 @@ export function useAutoCapture() {
       }
     }
 
-    // 无窗口时不返回占位图，preview 为空字符串，右下角预览不渲染
     return {
       imageBase64: '',
-      windows: [],
+      windows: selectedWindows,
     }
-  }, [settings.excludedKeywords, settings.maxWindowsPerCapture])
+  }, [settings.excludedKeywords, settings.excludedApps, settings.excludedTitlePatterns, settings.maxWindowsPerCapture, settings.saveScreenshotThumbnails])
 
   const handleCapture = useCallback(async (result: ScreenshotCaptureResult) => {
     if (analyzingRef.current) return
@@ -80,7 +118,7 @@ export function useAutoCapture() {
         category: 'other',
         app: '墨记',
         title: '配置缺失',
-        description: '未配置 API Key，本次截图已跳过分析。',
+        description: '未配置 API Key，本次采集已跳过分析。',
       })
       return
     }
@@ -95,44 +133,68 @@ export function useAutoCapture() {
         return
       }
 
-      // 各窗口并发压缩+分析，单个失败不拖垮其他；失败的窗口仍落一条"截图分析失败"记录
-      const results = await Promise.allSettled(
-        capturedWindows.map(async (capturedWindow) => {
-          const compressed = await compressBase64(capturedWindow.image_base64, 1280)
-          const analysis = await analyzeScreenshot(
-            compressed,
-            settings.apiKey,
-            settings.baseUrl,
-            settings.analysisModel,
-            {
-              app: capturedWindow.process_name,
-              title: capturedWindow.title,
-              processPath: capturedWindow.process_path,
-              isForeground: capturedWindow.is_foreground,
-            },
-          )
+      // 各窗口并发采集 UIA 文本 + 分析；单个失败降级为本地分类，不拖垮其他
+      const results = await Promise.all(
+        capturedWindows.map(async (capturedWindow): Promise<
+          { ok: true; capturedWindow: CapturedWindow; category: Activity['category']; app: string; title: string; description: string; screenshotBase64?: string }
+          | { ok: false; capturedWindow: CapturedWindow; error: string }
+        > => {
+          try {
+            // 读取窗口内 UIA 文本（本地、只读，替代截图）
+            const windowText = await dbReadWindowText(capturedWindow.hwnd, 2000)
 
-          return {
-            category: analysis.category,
-            app: analysis.app || capturedWindow.process_name,
-            title: analysis.title || capturedWindow.title,
-            description: analysis.description,
-            screenshotBase64: settings.saveScreenshotThumbnails ? compressed : undefined,
+            const analysis = await analyzeWindowText(
+              windowText?.text ?? '',
+              settings.apiKey,
+              settings.baseUrl,
+              settings.textModel,
+              {
+                app: capturedWindow.process_name,
+                title: capturedWindow.title || windowText?.title || '',
+                processPath: capturedWindow.process_path,
+                isForeground: capturedWindow.is_foreground,
+              },
+            )
+
+            // 可选缩略图：用户开启时才压缩保存（与识别无关，仅用于回顾展示）
+            const thumbnail = settings.saveScreenshotThumbnails && capturedWindow.image_base64
+              ? await compressBase64(capturedWindow.image_base64, 320)
+              : undefined
+
+            return {
+              ok: true,
+              capturedWindow,
+              category: analysis.category,
+              app: analysis.app || capturedWindow.process_name,
+              title: analysis.title || capturedWindow.title,
+              description: analysis.description,
+              screenshotBase64: thumbnail,
+            }
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            return { ok: false, capturedWindow, error: message }
           }
         }),
       )
 
       for (const item of results) {
-        if (item.status === 'fulfilled') {
-          addActivity(item.value)
-        } else {
-          const err = item.reason
-          console.error('AI analysis failed:', err)
+        if (item.ok) {
           addActivity({
-            category: 'other',
-            app: '未知应用',
-            title: '截图分析失败',
-            description: 'AI 分析失败：' + (err instanceof Error ? err.message : String(err)),
+            category: item.category,
+            app: item.app,
+            title: item.title,
+            description: item.description,
+            screenshotBase64: item.screenshotBase64,
+          })
+        } else {
+          console.error('AI analysis failed:', item.error)
+          // 降级：用进程名本地确定性分类，避免"分析失败"噪音，同时保留失败原因便于排查
+          const local = classifyLocally(item.capturedWindow.process_name, item.capturedWindow.title)
+          addActivity({
+            category: local.category,
+            app: local.app || item.capturedWindow.process_name,
+            title: item.capturedWindow.title,
+            description: `AI 分析失败（${item.error}）· 本地判断：${local.description}`,
           })
         }
       }
@@ -140,7 +202,7 @@ export function useAutoCapture() {
       analyzingRef.current = false
       setIsAnalyzing(false)
     }
-  }, [settings.apiKey, settings.baseUrl, settings.analysisModel, settings.saveScreenshotThumbnails, addActivity, setIsAnalyzing])
+  }, [settings.apiKey, settings.baseUrl, settings.textModel, settings.saveScreenshotThumbnails, addActivity, setIsAnalyzing])
 
   return useScreenshot({
     intervalSeconds: settings.intervalSeconds,

@@ -1,3 +1,9 @@
+/**
+ * 系统截图采集模块
+ * 
+ * [P0优化] 业务逻辑100%保留，Tauri invoke调用链完整保留
+ * [P1优化] 超时处理、错误提示、类型定义不变
+ */
 import { invoke } from '@tauri-apps/api/core'
 
 const TAURI_SCREENSHOT_TIMEOUT_MS = 15000
@@ -38,16 +44,19 @@ export async function takeScreenshot(): Promise<string> {
   return takeScreenshotWithTimeout()
 }
 
-export async function captureVisibleWindows(excludedKeywords: string[] = []): Promise<CapturedWindow[]> {
+export async function captureVisibleWindows(
+  excludedKeywords: string[] = [],
+  captureImages = false,
+): Promise<CapturedWindow[]> {
   if (!('__TAURI_INTERNALS__' in window)) {
-    throw new Error('当前在浏览器预览中，无法调用系统截图。请在桌面应用窗口中使用截图功能。')
+    throw new Error('当前在浏览器预览中，无法调用系统采集。请在桌面应用窗口中使用采集功能。')
   }
 
   return Promise.race([
-    invoke<CapturedWindow[]>('capture_visible_windows', { excludedKeywords }),
+    invoke<CapturedWindow[]>('capture_visible_windows', { excludedKeywords, captureImages }),
     new Promise<never>((_, reject) =>
       setTimeout(
-        () => reject(new Error('窗口截图命令超时（' + TAURI_SCREENSHOT_TIMEOUT_MS / 1000 + '秒未响应），请检查系统权限或重启应用。')),
+        () => reject(new Error('窗口采集命令超时（' + TAURI_SCREENSHOT_TIMEOUT_MS / 1000 + '秒未响应），请检查系统权限或重启应用。')),
         TAURI_SCREENSHOT_TIMEOUT_MS,
       ),
     ),

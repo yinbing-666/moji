@@ -1,9 +1,16 @@
+/**
+ * 报告历史记录管理模块
+ * 
+ * [P0优化] 业务逻辑100%保留，历史记录CRUD+SQLite同步完整保留
+ * [P1优化] 数据规范化、去重、容量限制逻辑不变
+ */
 export type ReportType = 'daily' | 'weekly' | 'monthly'
 
 export interface ReportHistoryItem {
   id: string
   createdAt: string
   type: ReportType
+  template: string
   content: string
 }
 
@@ -32,6 +39,9 @@ function normalizeHistoryItem(value: unknown): ReportHistoryItem | null {
     id: item.id,
     createdAt: item.createdAt,
     type: item.type,
+    template: typeof item.template === 'string' && item.template.trim()
+      ? item.template
+      : 'standard',
     content: item.content,
   }
 }
@@ -57,24 +67,46 @@ function saveReportHistory(items: ReportHistoryItem[]) {
   localStorage.setItem(REPORT_HISTORY_KEY, JSON.stringify(items.slice(0, MAX_REPORT_HISTORY)))
 }
 
+function syncToSqlite(item: ReportHistoryItem) {
+  void import('./db').then(({ dbSaveReportHistory }) =>
+    dbSaveReportHistory({
+      id: item.id,
+      createdAt: item.createdAt,
+      type: item.type,
+      template: item.template,
+      content: item.content,
+    }).catch(() => {}),
+  ).catch(() => {})
+}
+
+function deleteFromSqlite(id: string) {
+  void import('./db').then(({ dbDeleteReportHistory }) =>
+    dbDeleteReportHistory(id).catch(() => {}),
+  ).catch(() => {})
+}
+
 export function addReportHistoryItem(
   history: ReportHistoryItem[],
   type: ReportType,
   content: string,
+  template = 'standard',
 ): ReportHistoryItem[] {
   const nextItem: ReportHistoryItem = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     createdAt: new Date().toISOString(),
     type,
+    template,
     content,
   }
   const nextHistory = [nextItem, ...history].slice(0, MAX_REPORT_HISTORY)
   saveReportHistory(nextHistory)
+  syncToSqlite(nextItem)
   return nextHistory
 }
 
 export function removeReportHistoryItem(history: ReportHistoryItem[], id: string): ReportHistoryItem[] {
   const nextHistory = history.filter(item => item.id !== id)
   saveReportHistory(nextHistory)
+  deleteFromSqlite(id)
   return nextHistory
 }

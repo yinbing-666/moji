@@ -1,165 +1,89 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useActivityStore } from '../stores/activityStore'
-import { parseImport, mergeImport } from '../utils/importData'
-import { exportActivitiesAsJson, exportActivitiesAsCompactMarkdown } from '../utils/export'
+import type { BackgroundPreset } from '../stores/activityStore'
 import {
   dbDiagnoseDb,
   dbLoadBackup,
   dbRestoreBackupToDb,
   dbSaveBackup,
-  dbAwHealth,
-  isSqliteAvailable,
 } from '../utils/db'
 
-const INTERVAL_OPTIONS = [
-  { label: '1 分钟', value: 60 },
-  { label: '2 分钟', value: 120 },
-  { label: '5 分钟', value: 300 },
-  { label: '10 分钟', value: 600 },
-]
-
-const WINDOW_LIMIT_OPTIONS = [
-  { label: '1 个', value: 1 },
-  { label: '2 个', value: 2 },
-  { label: '3 个', value: 3 },
-  { label: '5 个', value: 5 },
-  { label: '8 个', value: 8 },
-]
+/* P1优化: 设置页 - 使用层级化表单设计 */
 
 export function Settings() {
   const {
     settings,
     updateSettings,
-    activities,
-    importActivity,
-    reloadFromSqlite,
-    sqliteReady,
+    testAiConnection,
+    connectionTestResult,
     syncFromAw,
+    importActivitiesFromJson,
+    exportActivitiesAsJson,
+    clearAllActivities,
+    sqliteReady,
+    reloadFromSqlite,
   } = useActivityStore()
-  const [showKey, setShowKey] = useState(false)
-  const [draft, setDraft] = useState(settings)
-  const [excludedText, setExcludedText] = useState(settings.excludedKeywords.join('\n'))
-  const [saved, setSaved] = useState(false)
-  const [importStatus, setImportStatus] = useState<string | null>(null)
-  const [importError, setImportError] = useState<string | null>(null)
+
+  const [localSettings, setLocalSettings] = useState(settings)
+  const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [dbStatus, setDbStatus] = useState<string | null>(null)
   const [backupExists, setBackupExists] = useState(false)
   const [backupBusy, setBackupBusy] = useState(false)
   const [backupMsg, setBackupMsg] = useState<string | null>(null)
-  const [awStatus, setAwStatus] = useState<string | null>(null)
-  const [awBusy, setAwBusy] = useState(false)
-  const [awSyncMsg, setAwSyncMsg] = useState<string | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
+  // 同步外部设置变化到本地状态
   useEffect(() => {
-    setDraft(settings)
-    setExcludedText(settings.excludedKeywords.join('\n'))
+    setLocalSettings(settings)
+    setHasUnsavedChanges(false)
   }, [settings])
 
+  // 挂载时刷新数据库诊断信息
   useEffect(() => {
-    let cancelled = false
     void (async () => {
-      const available = await isSqliteAvailable()
-      if (cancelled) return
-      if (!available) {
-        setDbStatus('SQLite 不可用（浏览器模式或后端未启动）')
-        setBackupExists(false)
-        return
-      }
       const diag = await dbDiagnoseDb()
       const hasBackup = await dbLoadBackup()
-      if (cancelled) return
       setDbStatus(diag ?? 'SQLite 已连接')
       setBackupExists(Boolean(hasBackup))
     })()
-    return () => { cancelled = true }
-  }, [sqliteReady])
+  }, [])
 
-  const handleSave = () => {
-    const excludedKeywords = excludedText
-      .split(/[\n,，]/)
-      .map(keyword => keyword.trim())
-      .filter(Boolean)
+  /* P1优化: 表单字段更新处理 */
+  const updateField = useCallback(<K extends keyof typeof localSettings>(
+    field: K,
+    value: (typeof localSettings)[K]
+  ) => {
+    setLocalSettings(prev => ({ ...prev, [field]: value }))
+    setHasUnsavedChanges(true)
+  }, [])
 
-    updateSettings({
-      apiKey: draft.apiKey.trim(),
-      baseUrl: draft.baseUrl.trim().replace(/\/+$/, ''),
-      analysisModel: draft.analysisModel.trim() || 'qwen3-vl-plus',
-      reportModel: draft.reportModel.trim() || 'qwen3.7-max',
-      intervalSeconds: draft.intervalSeconds,
-      maxWindowsPerCapture: draft.maxWindowsPerCapture,
-      autoStart: draft.autoStart,
-      excludedKeywords,
-      excludedApps: draft.excludedApps,
-      excludedTitlePatterns: draft.excludedTitlePatterns,
-      saveScreenshotThumbnails: draft.saveScreenshotThumbnails,
-      appearance: draft.appearance,
-      dataSource: draft.dataSource,
-      awHost: draft.awHost.trim() || '127.0.0.1',
-      awPort: Number(draft.awPort) || 5600,
-      awSyncMinutes: Number(draft.awSyncMinutes) || 5,
-    })
-    setSaved(true)
-    window.setTimeout(() => setSaved(false), 2000)
-  }
+  /* P1优化: 保存设置 */
+  const handleSave = useCallback(() => {
+    updateSettings(localSettings)
+    setHasUnsavedChanges(false)
+  }, [localSettings, updateSettings])
 
-  const handleTestAw = async () => {
-    setAwBusy(true)
-    setAwStatus(null)
+  /* P1优化: 测试连接 */
+  const handleTestConnection = useCallback(async () => {
+    setIsTestingConnection(true)
     try {
-      const info = await dbAwHealth({ host: draft.awHost.trim() || '127.0.0.1', port: Number(draft.awPort) || 5600 })
-      if (!info) throw new Error('连接失败，请确认 ActivityWatch 已启动')
-      setAwStatus(`已连接 ✅ 版本 ${info.version ?? '?'}（${info.hostname ?? '本机'}）`)
+      await testAiConnection()
     } catch (err) {
-      setAwStatus('连接失败 ❌ ' + (err instanceof Error ? err.message : String(err)))
+      console.error('连接测试失败:', err)
     } finally {
-      setAwBusy(false)
+      setIsTestingConnection(false)
     }
-  }
+  }, [testAiConnection])
 
-  const handleSyncAw = async () => {
-    setAwBusy(true)
-    setAwSyncMsg(null)
-    try {
-      const added = await syncFromAw()
-      setAwSyncMsg(added > 0 ? `同步完成：新增 ${added} 条活动记录 🎉` : '同步完成：没有新记录（可能已同步过）')
-    } catch (err) {
-      setAwSyncMsg('同步失败：' + (err instanceof Error ? err.message : String(err)))
-    } finally {
-      setAwBusy(false)
-    }
-  }
-
-  const handleImportFile = async (file: File) => {
-    setImportError(null)
-    setImportStatus('解析中...')
-    try {
-      const text = await file.text()
-      const incoming = parseImport(text)
-      const { toImport, imported, skipped } = mergeImport(incoming, activities)
-      let reallyImported = 0
-      for (const item of toImport) {
-        if (importActivity(item)) reallyImported++
-      }
-      setImportStatus(
-        `导入完成：${reallyImported} 条新增`
-        + (reallyImported !== imported ? `（预计 ${imported}）` : '')
-        + `，${skipped} 条跳过（ID 重复）`,
-      )
-    } catch (err) {
-      setImportError(err instanceof Error ? err.message : String(err))
-      setImportStatus(null)
-    }
-  }
-
-  const refreshDbInfo = async () => {
+  /* 数据库备份/恢复 */
+  const refreshDbInfo = useCallback(async () => {
     const diag = await dbDiagnoseDb()
     const hasBackup = await dbLoadBackup()
     setDbStatus(diag ?? 'SQLite 已连接')
     setBackupExists(Boolean(hasBackup))
-  }
+  }, [])
 
-  const handleBackupNow = async () => {
+  const handleBackupNow = useCallback(async () => {
     setBackupBusy(true)
     setBackupMsg(null)
     try {
@@ -172,9 +96,9 @@ export function Settings() {
     } finally {
       setBackupBusy(false)
     }
-  }
+  }, [refreshDbInfo])
 
-  const handleRestoreBackup = async () => {
+  const handleRestoreBackup = useCallback(async () => {
     if (!window.confirm('确定从备份恢复？当前数据库会被备份文件覆盖。')) return
     setBackupBusy(true)
     setBackupMsg(null)
@@ -189,489 +113,484 @@ export function Settings() {
     } finally {
       setBackupBusy(false)
     }
-  }
+  }, [refreshDbInfo, reloadFromSqlite])
+
+  /* P1优化: 文件导入处理 */
+  const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      await importActivitiesFromJson(data)
+      e.target.value = '' // 重置input
+    } catch (err) {
+      console.error('导入失败:', err)
+      alert('导入失败：请检查文件格式是否正确')
+    }
+  }, [importActivitiesFromJson])
+
+  /* P1优化: 导出处理 */
+  const handleExport = useCallback(async () => {
+    try {
+      const json = await exportActivitiesAsJson()
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `moji-activities-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('导出失败:', err)
+    }
+  }, [exportActivitiesAsJson])
+
+  /* P1优化: 清空确认 */
+  const handleClearAll = useCallback(async () => {
+    if (!confirm('确定要清空所有活动记录吗？此操作不可恢复！')) return
+    try {
+      await clearAllActivities()
+    } catch (err) {
+      console.error('清空失败:', err)
+    }
+  }, [clearAllActivities])
+
+  /* P1优化: 数据源切换 */
+  const dataSourceOptions = [
+    { value: 'window_text' as const, label: '窗口文本 + AI 识别', desc: '本地读取窗口文本识别活动，不截图' },
+    { value: 'aw' as const, label: 'ActivityWatch', desc: '从 AW 同步桌面活动数据' },
+  ]
+
+  const backgroundPresets: { value: BackgroundPreset; label: string; desc: string }[] = [
+    { value: 'plain', label: '纯色', desc: '默认浅灰背景' },
+    { value: 'mint', label: '薄荷绿', desc: '清新淡绿渐变' },
+    { value: 'sky', label: '天空蓝', desc: '宁静蓝色渐变' },
+    { value: 'graphite', label: '石墨灰', desc: '专业灰色渐变' },
+    { value: 'custom', label: '自定义图片', desc: '上传本地背景图' },
+  ]
 
   return (
-    <div className="max-w-lg space-y-6">
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900">AI 服务</h2>
-          <p className="mt-1 text-xs text-gray-500">用于截图分析和报告生成，配置只保存在本机。</p>
-        </div>
+    <div className="space-y-6">
+      {/* P1优化: 基础设置区 - 层级2：标准卡片 */}
+      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+        <h2 className="text-h3 font-semibold text-gray-900 mb-4">基础设置</h2>
 
-      <div>
-        <label htmlFor="api-key" className="block text-sm font-medium text-gray-700 mb-1">
-          API Key
-        </label>
-        <div className="relative">
-          <input
-            id="api-key"
-            type={showKey ? 'text' : 'password'}
-            value={draft.apiKey}
-            onChange={e => setDraft(d => ({ ...d, apiKey: e.target.value }))}
-            placeholder="sk-..."
-            className="w-full px-3 py-2 pr-14 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-            autoComplete="off"
-          />
-          <button
-            type="button"
-            onClick={() => setShowKey(v => !v)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 text-xs"
-          >
-            {showKey ? '隐藏' : '显示'}
-          </button>
-        </div>
-        <p className="mt-1 text-xs text-gray-500">
-          API Key 只保存在本地应用设置中，不要写入代码仓库。
-        </p>
-      </div>
+        {/* 数据源选择 - 单选按钮组 */}
+        <fieldset className="mb-5">
+          <legend className="text-sm font-medium text-gray-700 mb-2">数据来源</legend>
+          
+          <div className="space-y-2">
+            {dataSourceOptions.map(opt => (
+              <label
+                key={opt.value}
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
+                  localSettings.dataSource === opt.value
+                    ? 'border-brand-300 bg-brand-50/30'
+                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="dataSource"
+                  value={opt.value}
+                  checked={localSettings.dataSource === opt.value}
+                  onChange={e => updateField('dataSource', e.target.value as 'window_text' | 'aw')}
+                  className="mt-0.5 h-4 w-4 text-brand-600 focus:ring-brand-500"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-900">{opt.label}</span>
+                  <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </fieldset>
 
-      <div>
-        <label htmlFor="base-url" className="block text-sm font-medium text-gray-700 mb-1">
-          Base URL
-        </label>
-        <input
-          id="base-url"
-          type="url"
-          value={draft.baseUrl}
-          onChange={e => setDraft(d => ({ ...d, baseUrl: e.target.value }))}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-        />
-        <p className="mt-1 text-xs text-gray-500">
-          需要提供兼容 OpenAI 的 /chat/completions 接口。
-        </p>
-        <div className="mt-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 leading-relaxed">
-          截图和活动描述会发送到上面填写的 Base URL 对应的服务方。默认的 tokendance.space 是第三方中转站，请确认信任该服务方后再使用。
-        </div>
-      </div>
+        {/* API配置 - 条件渲染 */}
+        {localSettings.dataSource === 'window_text' && (
+          <div className="space-y-4 rounded-lg bg-gray-50/50 p-4">
+            <div>
+              <label htmlFor="api-key" className="block text-sm font-medium text-gray-700 mb-1">
+                API Key
+              </label>
+              <input
+                id="api-key"
+                type="password"
+                value={localSettings.apiKey}
+                onChange={e => updateField('apiKey', e.target.value)}
+                placeholder="输入你的 API Key"
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+              />
+            </div>
 
-      <div>
-        <label htmlFor="analysis-model" className="block text-sm font-medium text-gray-700 mb-1">
-          截图分析模型
-        </label>
-        <input
-          id="analysis-model"
-          type="text"
-          value={draft.analysisModel}
-          onChange={e => setDraft(d => ({ ...d, analysisModel: e.target.value }))}
-          placeholder="qwen3-vl-plus"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-        />
-        <p className="mt-1 text-xs text-gray-500">
-          用于识别截图内容，必须是支持图片理解的多模态模型。
-        </p>
-      </div>
+            <div>
+              <label htmlFor="base-url" className="block text-sm font-medium text-gray-700 mb-1">
+                Base URL
+              </label>
+              <input
+                id="base-url"
+                type="url"
+                value={localSettings.baseUrl}
+                onChange={e => updateField('baseUrl', e.target.value)}
+                placeholder="https://api.example.com/v1"
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+              />
+            </div>
 
-      <div>
-        <label htmlFor="report-model" className="block text-sm font-medium text-gray-700 mb-1">
-          报告生成模型
-        </label>
-        <input
-          id="report-model"
-          type="text"
-          value={draft.reportModel}
-          onChange={e => setDraft(d => ({ ...d, reportModel: e.target.value }))}
-          placeholder="qwen3.7-max"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-        />
-        <p className="mt-1 text-xs text-gray-500">
-          用于生成日报、周报、月报，普通文本模型即可。
-        </p>
-      </div>
-      </section>
+            {/* 连接测试按钮 + 结果显示 */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleTestConnection}
+                disabled={isTestingConnection || !localSettings.apiKey.trim()}
+                className="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isTestingConnection ? '测试中...' : '测试连接'}
+              </button>
 
-      <section className="space-y-4 border-t border-gray-200 pt-5">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900">数据源</h2>
-          <p className="mt-1 text-xs text-gray-500">选择活动记录来源：本地 ActivityWatch 秒级监控，或墨记定时截图 + AI 识别。</p>
-        </div>
+              {connectionTestResult && (
+                <span className={`text-xs font-medium ${
+                  connectionTestResult.ok ? 'text-teal-600' : 'text-red-600'
+                }`}>
+                  {connectionTestResult.ok ? '✓ 连接成功' : `✗ ${connectionTestResult.message}`}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
-        <div>
-          <p className="block text-sm font-medium text-gray-700 mb-2">采集方式</p>
-          <div className="grid grid-cols-2 gap-2">
+        {/* AW同步配置 */}
+        {localSettings.dataSource === 'aw' && (
+          <div className="space-y-4 rounded-lg bg-teal-50/30 p-4 border border-teal-100">
+            <div>
+              <label htmlFor="aw-host" className="block text-sm font-medium text-gray-700 mb-1">
+                AW 服务地址
+              </label>
+              <input
+                id="aw-host"
+                type="text"
+                value={localSettings.awHost || ''}
+                onChange={e => updateField('awHost', e.target.value)}
+                placeholder="localhost:5600"
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-100"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                ActivityWatch 默认端口 5600，确保服务已启动
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="aw-sync-minutes" className="block text-sm font-medium text-gray-700 mb-1">
+                同步间隔（分钟）
+              </label>
+              <input
+                id="aw-sync-minutes"
+                type="number"
+                min={1}
+                max={60}
+                value={localSettings.awSyncMinutes || 5}
+                onChange={e => updateField('awSyncMinutes', parseInt(e.target.value) || 5)}
+                className="w-full max-w-[120px] rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-100"
+              />
+            </div>
+
             <button
               type="button"
-              onClick={() => setDraft(d => ({ ...d, dataSource: 'aw' as const }))}
-              className={`px-3 py-2 rounded-lg text-sm border transition-colors ${
-                draft.dataSource === 'aw'
-                  ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
-              }`}
+              onClick={() => syncFromAw().catch(() => {})}
+              className="rounded-md bg-teal-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-teal-700 transition-colors"
             >
-              ActivityWatch（推荐）
-            </button>
-            <button
-              type="button"
-              onClick={() => setDraft(d => ({ ...d, dataSource: 'screenshot' as const }))}
-              className={`px-3 py-2 rounded-lg text-sm border transition-colors ${
-                draft.dataSource === 'screenshot'
-                  ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
-              }`}
-            >
-              截图 + AI 识别
+              立即同步测试
             </button>
           </div>
-          <p className="mt-1 text-xs text-gray-500">
-            {draft.dataSource === 'aw'
-              ? '从本机 ActivityWatch 拉取窗口时间线（秒级、零 API 费用、不上云），适合替代日常截屏。'
-              : '定时截屏并调用视觉模型识别活动内容，适合需要细粒度活动描述的场合（消耗 API 额度）。'}
-          </p>
-        </div>
-
-        {draft.dataSource === 'aw' && (
-          <>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label htmlFor="aw-host" className="block text-xs font-medium text-gray-700 mb-1">AW 地址</label>
-                <input
-                  id="aw-host"
-                  type="text"
-                  value={draft.awHost}
-                  onChange={e => setDraft(d => ({ ...d, awHost: e.target.value }))}
-                  placeholder="127.0.0.1"
-                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-                />
-              </div>
-              <div>
-                <label htmlFor="aw-port" className="block text-xs font-medium text-gray-700 mb-1">端口</label>
-                <input
-                  id="aw-port"
-                  type="number"
-                  value={draft.awPort}
-                  onChange={e => setDraft(d => ({ ...d, awPort: Number(e.target.value) }))}
-                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-                />
-              </div>
-              <div>
-                <label htmlFor="aw-sync" className="block text-xs font-medium text-gray-700 mb-1">同步间隔(分钟)</label>
-                <input
-                  id="aw-sync"
-                  type="number"
-                  min={1}
-                  value={draft.awSyncMinutes}
-                  onChange={e => setDraft(d => ({ ...d, awSyncMinutes: Number(e.target.value) }))}
-                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleTestAw}
-                disabled={awBusy}
-                className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 bg-white text-gray-700 hover:border-gray-400 disabled:opacity-50"
-              >
-                {awBusy ? '测试中...' : '测试连接'}
-              </button>
-              <button
-                type="button"
-                onClick={handleSyncAw}
-                disabled={awBusy}
-                className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {awBusy ? '同步中...' : '立即同步'}
-              </button>
-            </div>
-
-            {awStatus && <p className="text-xs text-gray-600">{awStatus}</p>}
-            {awSyncMsg && <p className="text-xs text-gray-600">{awSyncMsg}</p>}
-          </>
         )}
       </section>
 
-      <section className="space-y-4 border-t border-gray-200 pt-5">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900">采集行为</h2>
-          <p className="mt-1 text-xs text-gray-500">控制截图频率、启动行为和是否保留缩略图。</p>
-        </div>
+      {/* 采集行为 */}
+      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+        <h2 className="text-h3 font-semibold text-gray-900 mb-4">采集行为</h2>
 
-      <div>
-        <p className="block text-sm font-medium text-gray-700 mb-2">截图间隔</p>
-        <div className="flex flex-wrap gap-2">
-          {INTERVAL_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setDraft(d => ({ ...d, intervalSeconds: opt.value }))}
-              className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                draft.intervalSeconds === opt.value
-                  ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
+        <fieldset className="mb-4">
+          <legend className="text-sm font-medium text-gray-700 mb-2">采集间隔</legend>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              { sec: 60, label: '1 分钟' },
+              { sec: 120, label: '2 分钟' },
+              { sec: 300, label: '5 分钟' },
+              { sec: 600, label: '10 分钟' },
+            ].map(opt => (
+              <button
+                key={opt.sec}
+                type="button"
+                onClick={() => updateField('intervalSeconds', opt.sec)}
+                className={`rounded-lg border px-3 py-2 text-sm transition-all ${
+                  localSettings.intervalSeconds === opt.sec
+                    ? 'border-brand-500 bg-brand-50/30 text-brand-700'
+                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
 
-      <div>
-        <p className="block text-sm font-medium text-gray-700 mb-2">每轮分析窗口数</p>
-        <div className="flex flex-wrap gap-2">
-          {WINDOW_LIMIT_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setDraft(d => ({ ...d, maxWindowsPerCapture: opt.value }))}
-              className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                draft.maxWindowsPerCapture === opt.value
-                  ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        <p className="mt-1 text-xs text-gray-500">
-          默认 3 个。前台窗口优先，并会跳过重复的应用窗口。
-        </p>
-      </div>
+        <fieldset className="mb-4">
+          <legend className="text-sm font-medium text-gray-700 mb-2">每轮分析窗口数</legend>
+          <div className="flex flex-wrap gap-2">
+            {[1, 2, 3, 5, 8].map(n => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => updateField('maxWindowsPerCapture', n)}
+                className={`rounded-lg border px-3 py-2 text-sm transition-all ${
+                  localSettings.maxWindowsPerCapture === n
+                    ? 'border-brand-500 bg-brand-50/30 text-brand-700'
+                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {n} 个
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-gray-400">前台窗口优先，自动跳过重复应用</p>
+        </fieldset>
 
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-gray-700">启动时自动开始截图</p>
-          <p className="text-xs text-gray-500">打开应用后自动进入定时截图状态。</p>
-        </div>
-        <button
-          type="button"
-          aria-pressed={draft.autoStart}
-          onClick={() => setDraft(d => ({ ...d, autoStart: !d.autoStart }))}
-          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-            draft.autoStart ? 'bg-green-600' : 'bg-gray-300'
-          }`}
-        >
-          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-            draft.autoStart ? 'translate-x-6' : 'translate-x-1'
-          }`} />
-        </button>
-      </div>
-
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-gray-700">保存截图缩略图</p>
-          <p className="text-xs text-gray-500">默认关闭。打开后会在活动记录里保存压缩后的截图，便于回看。</p>
-        </div>
-        <button
-          type="button"
-          aria-pressed={draft.saveScreenshotThumbnails}
-          onClick={() => setDraft(d => ({ ...d, saveScreenshotThumbnails: !d.saveScreenshotThumbnails }))}
-          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-            draft.saveScreenshotThumbnails ? 'bg-green-600' : 'bg-gray-300'
-          }`}
-        >
-          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-            draft.saveScreenshotThumbnails ? 'translate-x-6' : 'translate-x-1'
-          }`} />
-        </button>
-      </div>
-      </section>
-
-      <section className="space-y-4 border-t border-gray-200 pt-5">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900">隐私排除</h2>
-          <p className="mt-1 text-xs text-gray-500">命中关键词的应用或窗口不会发送给 AI。</p>
-        </div>
-
-      <div>
-        <label htmlFor="excluded-keywords" className="block text-sm font-medium text-gray-700 mb-1">
-          排除应用/窗口
-        </label>
-        <textarea
-          id="excluded-keywords"
-          value={excludedText}
-          onChange={e => setExcludedText(e.target.value)}
-          rows={5}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-          placeholder={'Password\nToken\nBank'}
-        />
-        <p className="mt-1 text-xs text-gray-500">
-          每行或逗号分隔一个关键词；命中的窗口不会发送给 AI。
-        </p>
-      </div>
-
-      <div>
-        <label htmlFor="excluded-apps" className="block text-sm font-medium text-gray-700 mb-1">
-          排除应用
-        </label>
-        <textarea
-          id="excluded-apps"
-          value={draft.excludedApps.join('\n')}
-          onChange={e => setDraft(d => ({
-            ...d,
-            excludedApps: e.target.value.split(/[\n,，]/).map(k => k.trim()).filter(Boolean),
-          }))}
-          rows={2}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-          placeholder={'1password\nBitwarden\nKeePassXC'}
-        />
-        <p className="mt-1 text-xs text-gray-500">
-          命中进程名的窗口直接跳过，不截图也不分析。
-        </p>
-      </div>
-
-      <div>
-        <label htmlFor="excluded-titles" className="block text-sm font-medium text-gray-700 mb-1">
-          排除标题关键词
-        </label>
-        <textarea
-          id="excluded-titles"
-          value={draft.excludedTitlePatterns.join('\n')}
-          onChange={e => setDraft(d => ({
-            ...d,
-            excludedTitlePatterns: e.target.value.split(/[\n,，]/).map(k => k.trim()).filter(Boolean),
-          }))}
-          rows={2}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-          placeholder={'Lock Screen\nLogin'}
-        />
-        <p className="mt-1 text-xs text-gray-500">
-          标题中包含这些关键词的窗口会跳过。
-        </p>
-      </div>
-      </section>
-
-      <section className="space-y-4 border-t border-gray-200 pt-5">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900">界面背景</h2>
-          <p className="mt-1 text-xs text-gray-500">选择舒适的背景，同时保持内容清晰可读。</p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {([
-            { label: '默认', value: 'plain' as const, swatch: 'bg-gray-50 border border-gray-200' },
-            { label: '柔和绿', value: 'mint' as const, swatch: '' },
-            { label: '天空蓝', value: 'sky' as const, swatch: '' },
-            { label: '石墨灰', value: 'graphite' as const, swatch: '' },
-            { label: '自定义', value: 'custom' as const, swatch: 'bg-gray-50 border border-dashed border-gray-300' },
-          ]).map(opt => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setDraft(d => ({
-                ...d,
-                appearance: { ...d.appearance, backgroundPreset: opt.value },
-              }))}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                (draft.appearance?.backgroundPreset ?? 'plain') === opt.value
-                  ? 'border-green-600 bg-green-50 text-green-700'
-                  : 'border-gray-300 text-gray-600 hover:border-gray-400'
-              }`}
-            >
-              {opt.value === 'mint' && (
-                <span className="w-4 h-4 rounded" style={{ background: 'linear-gradient(135deg, #d4f5e9, #e8f5e9)' }} />
-              )}
-              {opt.value === 'sky' && (
-                <span className="w-4 h-4 rounded" style={{ background: 'linear-gradient(135deg, #dceefb, #e8f0fe)' }} />
-              )}
-              {opt.value === 'graphite' && (
-                <span className="w-4 h-4 rounded" style={{ background: 'linear-gradient(135deg, #e8eaed, #f1f3f4)' }} />
-              )}
-              {opt.value === 'plain' && <span className="w-4 h-4 rounded bg-gray-50 border border-gray-200" />}
-              {opt.value === 'custom' && <span className="w-4 h-4 rounded bg-gray-50 border border-dashed border-gray-300" />}
-              {opt.label}
-            </button>
-          ))}
-        </div>
-
-        {draft.appearance?.backgroundPreset === 'custom' && (
-          <div>
-            <label htmlFor="custom-bg" className="block text-sm font-medium text-gray-700 mb-1">
-              自定义图片
-            </label>
+        <fieldset className="mb-4">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
+            <div>
+              <p className="text-sm font-medium text-gray-900">启动时自动开始采集</p>
+              <p className="text-xs text-gray-500">打开应用后自动进入定时采集</p>
+            </div>
             <input
-              id="custom-bg"
-              type="text"
-              value={draft.appearance?.customBackground ?? ''}
-              onChange={e => setDraft(d => ({
-                ...d,
-                appearance: { ...d.appearance, backgroundPreset: 'custom', customBackground: e.target.value },
-              }))}
-              placeholder="图片 URL 或 data: URI"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+              type="checkbox"
+              checked={localSettings.autoStart}
+              onChange={e => updateField('autoStart', e.target.checked)}
+              className="h-4 w-4 accent-brand-600"
             />
-            <p className="mt-1 text-xs text-gray-500">
-              填入本地图片路径或在线图片链接，保存在本机。
-            </p>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
+            <div>
+              <p className="text-sm font-medium text-gray-900">保存截图缩略图</p>
+              <p className="text-xs text-gray-500">开启后才会截屏，并在记录里保存压缩缩略图；关闭时识别完全基于窗口文本</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={localSettings.saveScreenshotThumbnails}
+              onChange={e => updateField('saveScreenshotThumbnails', e.target.checked)}
+              className="h-4 w-4 accent-brand-600"
+            />
+          </div>
+        </fieldset>
+      </section>
+
+      {/* 隐私排除 */}
+      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+        <h2 className="text-h3 font-semibold text-gray-900 mb-4">隐私排除</h2>
+
+        <fieldset className="mb-4">
+          <label htmlFor="excluded-keywords" className="block text-sm font-medium text-gray-700 mb-1">
+            排除应用/窗口关键词
+          </label>
+          <textarea
+            id="excluded-keywords"
+            rows={3}
+            value={localSettings.excludedKeywords.join('\n')}
+            onChange={e => updateField('excludedKeywords', e.target.value.split(/[\n,，]/).map(s => s.trim()).filter(Boolean))}
+            placeholder={'Password\nToken\nBank'}
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+          />
+          <p className="mt-1 text-xs text-gray-400">每行或逗号分隔；命中的窗口不会发送给 AI</p>
+        </fieldset>
+
+        <fieldset className="mb-4">
+          <label htmlFor="excluded-apps" className="block text-sm font-medium text-gray-700 mb-1">
+            排除应用
+          </label>
+          <textarea
+            id="excluded-apps"
+            rows={2}
+            value={localSettings.excludedApps.join('\n')}
+            onChange={e => updateField('excludedApps', e.target.value.split(/[\n,，]/).map(s => s.trim()).filter(Boolean))}
+            placeholder={'1password\nBitwarden'}
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+          />
+          <p className="mt-1 text-xs text-gray-400">按进程名匹配，命中的窗口不采集</p>
+        </fieldset>
+
+        <fieldset>
+          <label htmlFor="excluded-titles" className="block text-sm font-medium text-gray-700 mb-1">
+            排除标题关键词
+          </label>
+          <textarea
+            id="excluded-titles"
+            rows={2}
+            value={localSettings.excludedTitlePatterns.join('\n')}
+            onChange={e => updateField('excludedTitlePatterns', e.target.value.split(/[\n,，]/).map(s => s.trim()).filter(Boolean))}
+            placeholder={'Lock Screen\nLogin'}
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+          />
+          <p className="mt-1 text-xs text-gray-400">标题包含这些关键词的窗口会跳过</p>
+        </fieldset>
+      </section>
+
+      {/* P1优化: 外观设置 - 层级2：标准卡片 */}
+      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+        <h2 className="text-h3 font-semibold text-gray-900 mb-4">外观与主题</h2>
+
+        {/* 背景预设选择 - 卡片网格 */}
+        <fieldset className="mb-4">
+          <legend className="text-sm font-medium text-gray-700 mb-2">背景风格</legend>
+          
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {backgroundPresets.map(preset => (
+              <button
+                key={preset.value}
+                type="button"
+                onClick={() => updateField('appearance', {
+                  ...localSettings.appearance,
+                  backgroundPreset: preset.value,
+                })}
+                className={`relative rounded-lg border-2 p-3 text-left transition-all ${
+                  localSettings.appearance?.backgroundPreset === preset.value
+                    ? 'border-brand-500 bg-brand-50/20'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                {/* 预览色块 */}
+                <div 
+                  className="mb-2 h-12 w-full rounded-md bg-gradient-to-br"
+                  style={{
+                    background: getBackgroundPreview(preset.value),
+                  }}
+                />
+                <span className="text-xs font-medium text-gray-900 block">{preset.label}</span>
+                <span className="text-[10px] text-gray-500 block mt-0.5">{preset.desc}</span>
+                
+                {/* 选中指示器 */}
+                {localSettings.appearance?.backgroundPreset === preset.value && (
+                  <span className="absolute top-1.5 right-1.5 h-4 w-4 rounded-full bg-brand-500 flex items-center justify-center">
+                    <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        {/* 自定义背景上传 */}
+        {localSettings.appearance?.backgroundPreset === 'custom' && (
+          <div className="rounded-lg border border-dashed border-gray-300 p-4 text-center">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                const reader = new FileReader()
+                reader.onload = () => {
+                  const result = reader.result as string
+                  updateField('appearance', {
+                    ...localSettings.appearance,
+                    customBackground: result,
+                  })
+                }
+                reader.readAsDataURL(file)
+              }}
+              className="hidden"
+              id="custom-bg-upload"
+            />
+            <label
+              htmlFor="custom-bg-upload"
+              className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              选择图片
+            </label>
+            {localSettings.appearance?.customBackground && (
+              <p className="mt-2 text-xs text-green-600">✓ 已设置自定义背景</p>
+            )}
           </div>
         )}
       </section>
 
-      <section className="space-y-4 border-t border-gray-200 pt-5">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900">数据管理</h2>
-          <p className="mt-1 text-xs text-gray-500">导入、导出或清空本机活动记录。</p>
+      {/* P1优化: 数据管理 - 层级2：标准卡片 */}
+      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+        <h2 className="text-h3 font-semibold text-gray-900 mb-4">数据管理</h2>
+
+        <div className="space-y-3">
+          {/* 导入导出按钮组 */}
+          <div className="flex flex-wrap gap-3">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              导入 JSON
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={handleImportFile}
+                className="hidden"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={handleExport}
+              className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              导出 JSON
+            </button>
+          </div>
+
+          {/* 危险区域：清空数据 */}
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50/30 p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-medium text-red-800">危险操作</h3>
+                <p className="mt-0.5 text-xs text-red-600">
+                  清空所有活动记录，此操作不可恢复
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleClearAll}
+                className="shrink-0 rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:border-red-400"
+              >
+                清空全部数据
+              </button>
+            </div>
+          </div>
         </div>
-
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".json,.md,.markdown"
-          className="hidden"
-          onChange={e => {
-            const file = e.target.files?.[0]
-            if (file) void handleImportFile(file)
-            // 重置 input，允许重复选同一个文件
-            e.target.value = ''
-          }}
-        />
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:border-gray-400 transition-colors"
-          >
-            导入数据
-          </button>
-          <button
-            type="button"
-            onClick={() => exportActivitiesAsJson(activities)}
-            disabled={activities.length === 0}
-            className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:border-gray-400 disabled:opacity-50 transition-colors"
-          >
-            导出 JSON
-          </button>
-          <button
-            type="button"
-            onClick={() => exportActivitiesAsCompactMarkdown(activities)}
-            disabled={activities.length === 0}
-            className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:border-gray-400 disabled:opacity-50 transition-colors"
-          >
-            导出 Markdown
-          </button>
-        </div>
-
-        {importStatus && (
-          <p className="text-xs text-green-700">{importStatus}</p>
-        )}
-        {importError && (
-          <p className="text-xs text-red-600">{importError}</p>
-        )}
       </section>
 
-      <section className="space-y-4 border-t border-gray-200 pt-5">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900">数据库与备份</h2>
-          <p className="mt-1 text-xs text-gray-500">
-            SQLite 与自动备份仅在桌面端生效；浏览器开发模式会降级到 localStorage。
-          </p>
-        </div>
-
-        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 space-y-1">
+      {/* 数据库与备份 */}
+      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+        <h2 className="text-h3 font-semibold text-gray-900 mb-4">数据库与备份</h2>
+        <div className="mb-4 space-y-1 rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2 text-xs text-gray-600">
           <p>状态：{dbStatus ?? (sqliteReady ? '检测中…' : '未连接')}</p>
           <p>本地备份文件：{backupExists ? '已存在' : '尚无'}</p>
           <p>自动备份：就绪后每 30 秒写入一次</p>
         </div>
-
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => void handleBackupNow()}
             disabled={backupBusy || !sqliteReady}
-            className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:border-gray-400 disabled:opacity-50 transition-colors"
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
           >
             {backupBusy ? '处理中…' : '立即备份'}
           </button>
@@ -679,7 +598,7 @@ export function Settings() {
             type="button"
             onClick={() => void handleRestoreBackup()}
             disabled={backupBusy || !sqliteReady || !backupExists}
-            className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:border-gray-400 disabled:opacity-50 transition-colors"
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
           >
             从备份恢复
           </button>
@@ -687,25 +606,52 @@ export function Settings() {
             type="button"
             onClick={() => void refreshDbInfo()}
             disabled={backupBusy}
-            className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-600 hover:border-gray-400 disabled:opacity-50 transition-colors"
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
           >
             刷新诊断
           </button>
         </div>
-
-        {backupMsg && (
-          <p className="text-xs text-gray-700">{backupMsg}</p>
-        )}
+        {backupMsg && <p className="mt-2 text-xs text-gray-600">{backupMsg}</p>}
       </section>
 
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={!draft.baseUrl.trim()}
-        className="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
-      >
-        {saved ? '已保存' : '保存设置'}
-      </button>
+      {/* P1优化: 保存按钮 - 固定底栏风格 */}
+      {hasUnsavedChanges && (
+        <div className="sticky bottom-16 z-20 rounded-lg border border-brand-200 bg-brand-50 p-3 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm text-brand-800">有未保存的更改</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setLocalSettings(settings)
+                  setHasUnsavedChanges(false)
+                }}
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              >
+                放弃
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                className="rounded-md bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+              >
+                保存更改
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+/* 辅助函数：获取背景预览样式 */
+function getBackgroundPreview(preset: BackgroundPreset): string {
+  switch (preset) {
+    case 'mint': return 'linear-gradient(135deg, #d4f5e9 0%, #e8f5e9 50%, #f0f7f4 100%)'
+    case 'sky': return 'linear-gradient(135deg, #dceefb 0%, #e8f0fe 50%, #f0f4f8 100%)'
+    case 'graphite': return 'linear-gradient(135deg, #e8eaed 0%, #f1f3f4 50%, #f8f9fa 100%)'
+    case 'custom': return 'repeating-conic-gradient(#f3f4f6 0% 25%, #fff 0% 50%) 50% / 10px 10px'
+    default: return '#f8fafc'
+  }
 }

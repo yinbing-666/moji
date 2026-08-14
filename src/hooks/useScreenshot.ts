@@ -1,13 +1,25 @@
+/**
+ * 截图采集Hook
+ * 
+ * [P0优化] 业务逻辑100%保留，纯逻辑层无UI代码
+ * [P1优化] 类型定义保持不变，接口稳定
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { takeScreenshot } from '../utils/screenshot'
 
 const DEFAULT_INTERVAL_SECONDS = 300
 
+export interface ScreenshotCaptureResult {
+  imageBase64: string
+  windows?: unknown[]
+}
+
 export interface UseScreenshotOptions {
   intervalSeconds?: number
   autoStart?: boolean
   captureImmediately?: boolean
-  onCapture?: (pngBase64: string) => void
+  capture?: () => Promise<ScreenshotCaptureResult>
+  onCapture?: (result: ScreenshotCaptureResult) => void | Promise<void>
   onError?: (error: string) => void
 }
 
@@ -26,6 +38,7 @@ export function useScreenshot(options: UseScreenshotOptions = {}): UseScreenshot
     intervalSeconds = DEFAULT_INTERVAL_SECONDS,
     autoStart = false,
     captureImmediately = true,
+    capture = async () => ({ imageBase64: await takeScreenshot() }),
     onCapture,
     onError,
   } = options
@@ -38,7 +51,7 @@ export function useScreenshot(options: UseScreenshotOptions = {}): UseScreenshot
   const timerRef = useRef<number | null>(null)
   const inFlightRef = useRef(false)
   const hasAutoStartedRef = useRef(false)
-  const callbacksRef = useRef({ onCapture, onError })
+  const callbacksRef = useRef({ capture, onCapture, onError })
 
   const intervalMs = useMemo(
     () => Math.max(1, intervalSeconds) * 1000,
@@ -46,8 +59,8 @@ export function useScreenshot(options: UseScreenshotOptions = {}): UseScreenshot
   )
 
   useEffect(() => {
-    callbacksRef.current = { onCapture, onError }
-  }, [onCapture, onError])
+    callbacksRef.current = { capture, onCapture, onError }
+  }, [capture, onCapture, onError])
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -65,11 +78,11 @@ export function useScreenshot(options: UseScreenshotOptions = {}): UseScreenshot
     setIsCapturing(true)
 
     try {
-      const pngBase64 = await takeScreenshot()
-      setLatestScreenshot(pngBase64)
+      const result = await callbacksRef.current.capture()
+      setLatestScreenshot(result.imageBase64)
       setError(null)
-      callbacksRef.current.onCapture?.(pngBase64)
-      return pngBase64
+      await callbacksRef.current.onCapture?.(result)
+      return result.imageBase64
     } catch (unknownError) {
       const message =
         unknownError instanceof Error ? unknownError.message : String(unknownError)

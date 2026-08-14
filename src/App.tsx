@@ -1,17 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ActivityProvider, useActivityStore, type Activity, type BackgroundPreset } from './stores/activityStore'
+import { ActivityProvider, useActivityStore, type BackgroundPreset } from './stores/activityStore'
 import { Settings } from './components/Settings'
 import { ActivityTimeline } from './components/ActivityTimeline'
 import { ReportView } from './components/ReportView'
+import { TodayOverview } from './components/TodayOverview'
 import { useAutoCapture } from './hooks/useAutoCapture'
-
-const CATEGORY_LABEL: Record<Activity['category'], string> = {
-  dev: '开发',
-  meeting: '会议',
-  doc: '文档',
-  communication: '沟通',
-  other: '其他',
-}
+import { categoryVisual } from './utils/categoryStyles'
 
 function isToday(iso: string) {
   return new Date(iso).toDateString() === new Date().toDateString()
@@ -37,23 +31,7 @@ function Dashboard() {
 
   const todaySummary = useMemo(() => {
     const todayActivities = activities.filter(activity => isToday(activity.timestamp))
-    const appCount = new Map<string, number>()
-    const categoryCount = new Map<Activity['category'], number>()
-
-    for (const activity of todayActivities) {
-      appCount.set(activity.app, (appCount.get(activity.app) ?? 0) + 1)
-      categoryCount.set(activity.category, (categoryCount.get(activity.category) ?? 0) + 1)
-    }
-
-    const topApp = [...appCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '暂无'
-    const topCategory = [...categoryCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
-
-    return {
-      count: todayActivities.length,
-      topApp,
-      topCategory: topCategory ? CATEGORY_LABEL[topCategory] : '暂无',
-      latest: todayActivities[0],
-    }
+    return { latest: todayActivities[0] }
   }, [activities])
 
   const handleCaptureToggle = () => {
@@ -62,7 +40,7 @@ function Dashboard() {
       return
     }
     if (isAwMode) {
-      // AW 模式：无需截图，手动触发一次同步
+      // AW 模式：无需采集，手动触发一次同步
       void syncFromAw().catch(() => {})
       return
     }
@@ -71,109 +49,118 @@ function Dashboard() {
     }
   }
 
+  const latestVisual = todaySummary.latest ? categoryVisual(todaySummary.latest.category) : null
+
   return (
     <div
-      className="min-h-screen pb-20"
-      style={{ background: 'var(--app-bg, #f9fafb)' }}
+      className="min-h-screen pb-24"
+      style={{ background: 'var(--app-bg, #f8fafc)' }}
     >
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between max-w-4xl mx-auto gap-4">
+      {/* P0优化: Header - 简化Logo + 删除渐变 */}
+      <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/90 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-6 py-3">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">
+            {/* P2优化: Logo - 纯色方块替代渐变 */}
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-900 text-lg font-bold text-white">
               墨
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-gray-900">墨记</h1>
-              <p className="text-xs text-gray-500">本地工作复盘助手</p>
+              {/* P1优化: 字号层级调整 */}
+              <h1 className="text-h1 font-bold text-gray-900 tracking-tight">墨记</h1>
+              {/* P1优化: Slogan情感化 */}
+              <p className="text-2xs text-gray-400">记录每一天的工作痕迹</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm">
-              {isAwMode ? (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-gray-600">AW 同步中</span>
-                </>
-              ) : isRunning ? (
-                <>
-                  <span className={`w-2 h-2 rounded-full ${isAnalyzing ? 'bg-yellow-400 animate-pulse' : 'bg-green-500'}`} />
-                  <span className="text-gray-600">
-                    {isAnalyzing ? 'AI 分析中' : isCapturing ? '截图中' : '运行中'}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-gray-300" />
-                  <span className="text-gray-500">已停止</span>
-                </>
-              )}
-            </div>
+          <div className="flex items-center gap-3">
+            {isAwMode ? (
+              /* P1优化: 状态指示器 - 简化动画 */
+              <span className="inline-flex items-center gap-2 rounded-md border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs text-teal-700">
+                <span className="h-2 w-2 rounded-full bg-teal-500 animate-pulse-dot" />
+                AW 同步中
+              </span>
+            ) : isRunning ? (
+              <span className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs transition-colors ${
+                isAnalyzing
+                  ? 'border-orange-200 bg-orange-50 text-orange-700'
+                  : 'border-teal-200 bg-teal-50 text-teal-700'
+              }`}>
+                <span className={`h-2 w-2 rounded-full ${isAnalyzing ? 'bg-orange-500 animate-pulse-dot' : 'bg-teal-500'}`} />
+                {isAnalyzing ? '分析中' : isCapturing ? '采集中' : '运行中'}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-400">
+                <span className="h-2 w-2 rounded-full bg-gray-300" />
+                已停止
+              </span>
+            )}
 
+            {/* P0优化: 主CTA按钮 - 纯色替代渐变 */}
             <button
               type="button"
               onClick={handleCaptureToggle}
               disabled={!isRunning && !isAwMode && !isConfigured}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 isRunning
-                  ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
-                  : 'bg-green-600 text-white hover:bg-green-700'
+                  ? 'border border-red-200 bg-red-50 text-red-600 hover:bg-red-100'
+                  : 'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800'
               }`}
             >
-              {isAwMode ? '立即同步' : isRunning ? '停止' : '开始截图'}
+              {isAwMode ? '立即同步' : isRunning ? '停止' : '开始采集'}
             </button>
           </div>
         </div>
       </header>
 
+      {/* P1优化: 错误提示 - 删除动画 */}
       {error && (
-        <div className="max-w-4xl mx-auto mt-4 px-6">
-          <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-            {error}
+        <div className="mx-auto mt-4 max-w-4xl px-6">
+          <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <svg className="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>{error}</span>
           </div>
         </div>
       )}
 
+      {/* P1优化: 配置提示 - 删除动画 + emoji替换为文字 */}
       {!isConfigured && !isAwMode && (
-        <div className="max-w-4xl mx-auto mt-4 px-6">
-          <div role="status" className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-            开始截图前，请先在设置里配置 API Key 和 Base URL。
+        <div className="mx-auto mt-4 max-w-4xl px-6">
+          <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <svg className="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            <span>开始采集前，请先在设置里配置 API Key 和 Base URL。</span>
           </div>
         </div>
       )}
 
-      <main className="max-w-4xl mx-auto px-6 py-6">
-        <section className="grid gap-3 sm:grid-cols-3 mb-6">
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
-            <p className="text-xs text-gray-500">今日记录</p>
-            <p className="mt-1 text-2xl font-semibold text-gray-900">{todaySummary.count}</p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
-            <p className="text-xs text-gray-500">主要应用</p>
-            <p className="mt-1 truncate text-lg font-semibold text-gray-900">{todaySummary.topApp}</p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
-            <p className="text-xs text-gray-500">主要类型</p>
-            <p className="mt-1 text-lg font-semibold text-gray-900">{todaySummary.topCategory}</p>
-          </div>
-        </section>
+      <main className="mx-auto max-w-4xl px-6 py-6">
+        <TodayOverview activities={activities} />
 
-        <section className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
+        {/* P1优化: 最近活动卡片 - 左侧色条强调 */}
+        <section className="mb-6 border-l-4 border-l-brand-500 bg-white rounded-r-xl p-4 shadow-sm">
           <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-xs text-gray-500">最近活动</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-gray-500">最近活动</p>
               {todaySummary.latest ? (
-                <>
-                  <p className="mt-1 truncate text-sm font-medium text-gray-900">{todaySummary.latest.app}</p>
-                  <p className="mt-0.5 truncate text-sm text-gray-600">{todaySummary.latest.description}</p>
-                </>
+                <div className="mt-2 flex items-start gap-3">
+                  {latestVisual && (
+                    <span className="mt-1 h-8 w-1 shrink-0 rounded-full" style={{ backgroundColor: latestVisual.hex }} />
+                  )}
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-gray-900">{todaySummary.latest.app}</p>
+                    <p className="mt-0.5 truncate text-sm text-gray-600">{todaySummary.latest.description}</p>
+                  </div>
+                </div>
               ) : (
                 <>
-                  <p className="mt-1 text-sm font-medium text-gray-900">暂无最近活动</p>
+                  <p className="mt-2 text-sm font-medium text-gray-900">暂无最近活动</p>
                   <p className="mt-0.5 text-sm text-gray-500">
                     {isAwMode
                       ? '等待 ActivityWatch 数据同步，或点右上角「立即同步」。'
-                      : '配置完成后，可以手动截一次图验证识别效果。'}
+                      : '配置完成后，可以手动采集一次验证识别效果。'}
                   </p>
                 </>
               )}
@@ -182,46 +169,61 @@ function Dashboard() {
               type="button"
               onClick={() => void captureNow()}
               disabled={isAwMode || !isConfigured || isCapturing || isAnalyzing}
-              className="shrink-0 rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isCapturing || isAnalyzing ? '处理中' : '立即截图'}
+              {isCapturing || isAnalyzing ? '处理中' : '立即采集'}
             </button>
           </div>
         </section>
 
-        <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
+        {/* P1优化: Tab切换器 - 下划线指示器替代背景高亮 */}
+        <div className="mb-6 flex border-b border-gray-200">
           <button
             type="button"
             onClick={() => setTab('timeline')}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              tab === 'timeline' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+              tab === 'timeline' 
+                ? 'text-brand-700' 
+                : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             活动
+            {tab === 'timeline' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-500" />
+            )}
           </button>
           <button
             type="button"
             onClick={() => setTab('report')}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              tab === 'report' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+              tab === 'report' 
+                ? 'text-brand-700' 
+                : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             报告
+            {tab === 'report' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-500" />
+            )}
           </button>
         </div>
 
-        {tab === 'timeline' ? <ActivityTimeline /> : <ReportView />}
+        {/* P1优化: 内容区 - 删除入场动画 */}
+        <div>
+          {tab === 'timeline' ? <ActivityTimeline activities={activities} /> : <ReportView activities={activities} />}
+        </div>
       </main>
 
+      {/* 截图预览浮窗 - 删除动画 */}
       {latestScreenshot && (
-        <div className="fixed bottom-4 right-4 w-48 rounded-lg overflow-hidden shadow-lg border border-gray-200 bg-white">
+        <div className="fixed bottom-20 right-4 w-48 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-md">
           <img
             src={`data:image/jpeg;base64,${latestScreenshot}`}
-            alt="最近截图"
-            className="w-full h-auto"
+            alt="最近活动预览"
+            className="h-auto w-full"
           />
-          <div className="px-2 py-1 text-xs text-gray-500 text-center bg-white">
-            最近截图
+          <div className="bg-white px-2 py-1 text-center text-xs text-gray-500">
+            最近活动预览
           </div>
         </div>
       )}
@@ -232,18 +234,21 @@ function Dashboard() {
 function SettingsPage() {
   return (
     <div
-      className="min-h-screen pb-20"
-      style={{ background: 'var(--app-bg, #f9fafb)' }}
+      className="min-h-screen pb-24"
+      style={{ background: 'var(--app-bg, #f8fafc)' }}
     >
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-lg font-semibold text-gray-900">设置</h1>
+      <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/90 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-4xl items-center gap-3 px-6 py-3">
+          {/* P2优化: 设置页Logo - 与首页统一风格 */}
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-900 text-lg font-bold text-white">
+            墨
+          </div>
+          <h1 className="text-h1 font-bold text-gray-900 tracking-tight">设置</h1>
         </div>
       </header>
-      <main className="max-w-4xl mx-auto px-6 py-6">
-        <div className="bg-white rounded-lg p-6 border border-gray-200">
-          <Settings />
-        </div>
+      {/* P1优化: 设置页容器 - 删除动画 + 使用左侧色条风格 */}
+      <main className="mx-auto max-w-4xl px-6 py-6">
+        <Settings />
       </main>
     </div>
   )
@@ -274,25 +279,42 @@ function AppShell() {
 
   return (
     <>
-      <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white rounded-full shadow-lg border border-gray-200 px-2 py-1 flex gap-1">
-        <button
-          type="button"
-          onClick={() => setPage('dashboard')}
-          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-            page === 'dashboard' ? 'bg-green-600 text-white' : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          首页
-        </button>
-        <button
-          type="button"
-          onClick={() => setPage('settings')}
-          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-            page === 'settings' ? 'bg-green-600 text-white' : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          设置
-        </button>
+      {/* P0优化: 底部导航栏 - 改为固定底栏 + 下划线指示器 + 删除emoji */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white/95 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-4xl">
+          <button
+            type="button"
+            onClick={() => setPage('dashboard')}
+            className={`flex flex-1 items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
+              page === 'dashboard'
+                ? 'text-brand-700 border-b-2 border-brand-500 -mb-px'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            {/* P0优化: 用SVG图标替代emoji 🏠 */}
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+            首页
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => setPage('settings')}
+            className={`flex flex-1 items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
+              page === 'settings'
+                ? 'text-brand-700 border-b-2 border-brand-500 -mb-px'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            {/* P0优化: 用SVG图标替代emoji ⚙️ */}
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            设置
+          </button>
+        </div>
       </nav>
 
       {page === 'dashboard' ? <Dashboard /> : <SettingsPage />}
