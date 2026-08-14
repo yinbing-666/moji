@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { runAwAnalytics, openAwReport, dbAwHealth, type AwAnalyticsResult } from '../utils/db'
+import { runAwAnalytics, openAwReport, dbAwHealth, launchActivitywatch, type AwAnalyticsResult } from '../utils/db'
 
 const LEVEL_LABEL: Record<string, string> = {
   focus: '深度专注',
@@ -49,6 +49,26 @@ export function AwAnalytics() {
     return () => { cancelled = true }
   }, [])
 
+  // 启动 ActivityWatch 并重新检测
+  const handleLaunch = useCallback(async () => {
+    const path = await launchActivitywatch()
+    if (!path) {
+      setError('未找到 ActivityWatch，请先手动安装或启动')
+      return
+    }
+    setError(null)
+    // 等待服务起来后重新检测
+    for (let i = 0; i < 10; i++) {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      const info = await dbAwHealth()
+      if (info) {
+        setAwOnline(true)
+        return
+      }
+    }
+    setError('ActivityWatch 已启动但服务未就绪，请稍后重试')
+  }, [])
+
   const generate = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -77,9 +97,18 @@ export function AwAnalytics() {
       </div>
 
       {awOnline === false && (
-        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
-          未检测到 ActivityWatch（默认 127.0.0.1:5600）。请先启动 ActivityWatch 再生成效率报告。
-        </p>
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+          <p className="text-xs text-amber-800">
+            未检测到 ActivityWatch（默认 127.0.0.1:5600）。
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleLaunch()}
+            className="shrink-0 rounded-md bg-teal-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-teal-700"
+          >
+            启动 ActivityWatch
+          </button>
+        </div>
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">

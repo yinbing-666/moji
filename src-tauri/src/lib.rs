@@ -59,6 +59,7 @@ pub fn run() {
             // activitywatch analytics skill integration
             aw_analytics::run_aw_analytics,
             aw_analytics::open_aw_report,
+            aw_analytics::launch_activitywatch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

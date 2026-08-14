@@ -181,6 +181,37 @@ pub async fn open_aw_report(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// 探测并启动 ActivityWatch(常见安装路径)。返回启动的可执行文件路径。
+#[tauri::command]
+pub async fn launch_activitywatch() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            candidates.push(PathBuf::from(&home).join("ActivityWatch/aw-qt.exe"));
+        }
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            candidates.push(PathBuf::from(&local).join("Programs/activitywatch/aw-qt.exe"));
+            candidates.push(PathBuf::from(&local).join("Programs/ActivityWatch/aw-qt.exe"));
+        }
+        candidates.push(PathBuf::from("C:/Program Files/ActivityWatch/aw-qt.exe"));
+
+        for path in &candidates {
+            if path.exists() {
+                Command::new(path)
+                    .spawn()
+                    .map_err(|e| format!("启动 ActivityWatch 失败: {e}"))?;
+                return Ok(path.to_string_lossy().to_string());
+            }
+        }
+        Err("未找到 ActivityWatch，请先手动安装或启动".to_string())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("非 Windows 平台暂不支持自动启动".to_string())
+    }
+}
+
 fn find_report_json(root: &Path) -> Option<PathBuf> {
     let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
     for entry in std::fs::read_dir(root).ok()? {

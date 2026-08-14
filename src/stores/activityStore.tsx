@@ -32,8 +32,8 @@ export interface Activity {
   screenshotBase64?: string
 }
 
-/* DataSource 类型 - 两种模式：窗口文本识别（UIA，不截图）或 ActivityWatch */
-export type DataSource = 'window_text' | 'aw'
+/* DataSource 类型：窗口文本识别（UIA）、ActivityWatch、或双源并行（both） */
+export type DataSource = 'window_text' | 'aw' | 'both'
 
 export interface Settings {
   apiKey: string
@@ -263,7 +263,7 @@ function loadSettings(): Settings {
       saveScreenshotThumbnails: Boolean(saved.saveScreenshotThumbnails),
       appearance: normalizeAppearance(saved.appearance),
       // 旧值 'screenshot' 迁移为 'window_text'（识别已改为窗口文本，不再截图）
-      dataSource: saved.dataSource === 'aw' ? 'aw' : 'window_text',
+      dataSource: saved.dataSource === 'both' ? 'both' : saved.dataSource === 'aw' ? 'aw' : 'window_text',
       awHost: typeof saved.awHost === 'string' && saved.awHost.trim() ? saved.awHost.trim() : DEFAULT_SETTINGS.awHost,
       awPort: Number.isFinite(saved.awPort) && saved.awPort > 0 ? Math.round(saved.awPort) : DEFAULT_SETTINGS.awPort,
       awSyncMinutes: Number.isFinite(saved.awSyncMinutes) && saved.awSyncMinutes > 0 ? Math.round(saved.awSyncMinutes) : DEFAULT_SETTINGS.awSyncMinutes,
@@ -366,6 +366,15 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       id: createActivityId(),
       timestamp: new Date().toISOString(),
     }
+    // 双源并行去重：同 app+title 且在 90 秒内出现过的记录跳过，
+    // 避免 ActivityWatch 与窗口文本采集同时写入重复条目
+    const ts = Date.parse(newActivity.timestamp)
+    const isDuplicate = activitiesRef.current.some(a =>
+      a.app === newActivity.app
+      && a.title === newActivity.title
+      && Math.abs(Date.parse(a.timestamp) - ts) < 90_000
+    )
+    if (isDuplicate) return
     setActivities(prev => [newActivity, ...prev])
     saveToSqlite(newActivity)
   }, [saveToSqlite])

@@ -206,7 +206,8 @@ export function useAutoCapture() {
 
   return useScreenshot({
     intervalSeconds: settings.intervalSeconds,
-    autoStart: Boolean(settings.autoStart && settings.apiKey.trim()),
+    // 仅在启用了窗口文本采集(AW 模式不启动)时自动采集
+    autoStart: Boolean(settings.autoStart && settings.apiKey.trim() && settings.dataSource !== 'aw'),
     capture: captureAllowedWindows,
     onCapture: handleCapture,
   })

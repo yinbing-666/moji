@@ -226,6 +226,11 @@ export async function openAwReport(path: string): Promise<boolean> {
   return (await call('open_aw_report', { path })) !== null
 }
 
+/** 探测并启动 ActivityWatch,返回启动路径;失败返回 null */
+export async function launchActivitywatch(): Promise<string | null> {
+  return call<string>('launch_activitywatch')
+}
+
 // ── System Detection ──
 
 export interface ForegroundWindowInfo {

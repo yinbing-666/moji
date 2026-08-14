@@ -163,6 +163,7 @@ export function Settings() {
   const dataSourceOptions = [
     { value: 'window_text' as const, label: '窗口文本 + AI 识别', desc: '本地读取窗口文本识别活动，不截图' },
     { value: 'aw' as const, label: 'ActivityWatch', desc: '从 AW 同步桌面活动数据' },
+    { value: 'both' as const, label: '双源并行', desc: '窗口文本 AI 识别 + AW 时间线同时采集，去重合并' },
   ]
 
   const backgroundPresets: { value: BackgroundPreset; label: string; desc: string }[] = [
@@ -211,7 +212,7 @@ export function Settings() {
         </fieldset>
 
         {/* API配置 - 条件渲染 */}
-        {localSettings.dataSource === 'window_text' && (
+        {localSettings.dataSource !== 'aw' && (
           <div className="space-y-4 rounded-lg bg-gray-50/50 p-4">
             <div>
               <label htmlFor="api-key" className="block text-sm font-medium text-gray-700 mb-1">
@@ -264,7 +265,7 @@ export function Settings() {
         )}
 
         {/* AW同步配置 */}
-        {localSettings.dataSource === 'aw' && (
+        {localSettings.dataSource !== 'window_text' && (
           <div className="space-y-4 rounded-lg bg-teal-50/30 p-4 border border-teal-100">
             <div>
               <label htmlFor="aw-host" className="block text-sm font-medium text-gray-700 mb-1">

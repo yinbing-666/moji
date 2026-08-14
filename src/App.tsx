@@ -16,18 +16,20 @@ function Dashboard() {
   const { isRunning, isCapturing, latestScreenshot, error, start, stop, captureNow } = useAutoCapture()
   const [tab, setTab] = useState<'timeline' | 'report'>('timeline')
   const isConfigured = Boolean(settings.apiKey.trim() && settings.baseUrl.trim())
-  const isAwMode = settings.dataSource === 'aw'
+  // 双源并行:window_text / both 启用窗口文本采集,aw / both 启用 AW 同步
+  const windowTextEnabled = settings.dataSource !== 'aw'
+  const awEnabled = settings.dataSource !== 'window_text'
 
   // AW 模式：按配置间隔自动同步（无需 API Key）
   useEffect(() => {
-    if (!isAwMode) return
+    if (!awEnabled) return
     void syncFromAw().catch(() => {})
     const minutes = Math.max(1, settings.awSyncMinutes || 5)
     const timer = window.setInterval(() => {
       void syncFromAw().catch(() => {})
     }, minutes * 60 * 1000)
     return () => window.clearInterval(timer)
-  }, [isAwMode, settings.awSyncMinutes, syncFromAw])
+  }, [awEnabled, settings.awSyncMinutes, syncFromAw])
 
   const todaySummary = useMemo(() => {
     const todayActivities = activities.filter(activity => isToday(activity.timestamp))
@@ -39,8 +41,8 @@ function Dashboard() {
       stop()
       return
     }
-    if (isAwMode) {
-      // AW 模式：无需采集，手动触发一次同步
+    if (!windowTextEnabled) {
+      // 未启用窗口文本采集（纯 AW 模式）：手动触发一次同步
       void syncFromAw().catch(() => {})
       return
     }
@@ -73,25 +75,22 @@ function Dashboard() {
           </div>
 
           <div className="flex items-center gap-3">
-            {isAwMode ? (
-              /* P1优化: 状态指示器 - 简化动画 */
+            {awEnabled && (
               <span className="inline-flex items-center gap-2 rounded-md border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs text-teal-700">
                 <span className="h-2 w-2 rounded-full bg-teal-500 animate-pulse-dot" />
-                AW 同步中
+                AW
               </span>
-            ) : isRunning ? (
+            )}
+            {windowTextEnabled && (
               <span className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs transition-colors ${
                 isAnalyzing
                   ? 'border-orange-200 bg-orange-50 text-orange-700'
-                  : 'border-teal-200 bg-teal-50 text-teal-700'
+                  : isRunning
+                    ? 'border-teal-200 bg-teal-50 text-teal-700'
+                    : 'border-gray-200 bg-gray-50 text-gray-400'
               }`}>
-                <span className={`h-2 w-2 rounded-full ${isAnalyzing ? 'bg-orange-500 animate-pulse-dot' : 'bg-teal-500'}`} />
-                {isAnalyzing ? '分析中' : isCapturing ? '采集中' : '运行中'}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-400">
-                <span className="h-2 w-2 rounded-full bg-gray-300" />
-                已停止
+                <span className={`h-2 w-2 rounded-full ${isAnalyzing ? 'bg-orange-500 animate-pulse-dot' : isRunning ? 'bg-teal-500' : 'bg-gray-300'}`} />
+                {isAnalyzing ? '分析中' : isCapturing ? '采集中' : isRunning ? '运行中' : '已停止'}
               </span>
             )}
 
@@ -99,14 +98,14 @@ function Dashboard() {
             <button
               type="button"
               onClick={handleCaptureToggle}
-              disabled={!isRunning && !isAwMode && !isConfigured}
+              disabled={!windowTextEnabled ? false : !isRunning && !isConfigured}
               className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 isRunning
                   ? 'border border-red-200 bg-red-50 text-red-600 hover:bg-red-100'
                   : 'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800'
               }`}
             >
-              {isAwMode ? '立即同步' : isRunning ? '停止' : '开始采集'}
+              {windowTextEnabled ? (isRunning ? '停止' : '开始采集') : '立即同步'}
             </button>
           </div>
         </div>
@@ -125,7 +124,7 @@ function Dashboard() {
       )}
 
       {/* P1优化: 配置提示 - 删除动画 + emoji替换为文字 */}
-      {!isConfigured && !isAwMode && (
+      {!isConfigured && windowTextEnabled && (
         <div className="mx-auto mt-4 max-w-4xl px-6">
           <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             <svg className="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -158,7 +157,7 @@ function Dashboard() {
                 <>
                   <p className="mt-2 text-sm font-medium text-gray-900">暂无最近活动</p>
                   <p className="mt-0.5 text-sm text-gray-500">
-                    {isAwMode
+                    {!windowTextEnabled
                       ? '等待 ActivityWatch 数据同步，或点右上角「立即同步」。'
                       : '配置完成后，可以手动采集一次验证识别效果。'}
                   </p>
@@ -168,7 +167,7 @@ function Dashboard() {
             <button
               type="button"
               onClick={() => void captureNow()}
-              disabled={isAwMode || !isConfigured || isCapturing || isAnalyzing}
+              disabled={!windowTextEnabled || !isConfigured || isCapturing || isAnalyzing}
               className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isCapturing || isAnalyzing ? '处理中' : '立即采集'}
