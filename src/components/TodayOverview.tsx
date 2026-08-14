@@ -135,17 +135,13 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
           })}
         </div>
 
-        {/* 时间标签 */}
-        <div className="mt-2 flex justify-between text-[10px] text-gray-400">
-          <span>00:00</span>
-          <span>03:00</span>
-          <span>06:00</span>
-          <span>09:00</span>
-          <span>12:00</span>
-          <span>15:00</span>
-          <span>18:00</span>
-          <span>21:00</span>
-          <span>24:00</span>
+        {/* 时间标签 - 5 个刻度均分,避免窄容器挤压溢出 */}
+        <div className="mt-2 flex justify-between text-[10px] tabular-nums text-gray-400">
+          <span className="whitespace-nowrap">00:00</span>
+          <span className="whitespace-nowrap">06:00</span>
+          <span className="whitespace-nowrap">12:00</span>
+          <span className="whitespace-nowrap">18:00</span>
+          <span className="whitespace-nowrap">24:00</span>
         </div>
       </section>
 
