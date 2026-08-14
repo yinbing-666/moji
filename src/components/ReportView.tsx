@@ -9,7 +9,7 @@ interface ReportViewProps {
 }
 
 export function ReportView({ activities }: ReportViewProps) {
-  const { isGeneratingReport, generateDailyReport, settings } = useActivityStore()
+  const { isGeneratingReport, generateDailyReport } = useActivityStore()
   const [reportDate, setReportDate] = useState(() => {
     const now = new Date()
     return now.toISOString().slice(0, 10)
@@ -69,8 +69,8 @@ export function ReportView({ activities }: ReportViewProps) {
   /* P1优化: 报告页面布局 - 使用层级化卡片系统 */
   return (
     <div className="space-y-6">
-      {/* AW 模式:效率分析(基于 ActivityWatch Analytics Skill) */}
-      {settings.dataSource === 'aw' && <AwAnalytics />}
+      {/* 效率分析(基于 ActivityWatch Analytics Skill,任何数据源模式可用) */}
+      <AwAnalytics />
 
       {/* 报告控制栏 - 层级2：标准卡片 */}
       <section className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-sm">

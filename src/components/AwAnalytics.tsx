@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react'
-import { runAwAnalytics, openAwReport, type AwAnalyticsResult } from '../utils/db'
+import { useCallback, useEffect, useState } from 'react'
+import { runAwAnalytics, openAwReport, dbAwHealth, type AwAnalyticsResult } from '../utils/db'
 
 const LEVEL_LABEL: Record<string, string> = {
   focus: '深度专注',
@@ -32,12 +32,22 @@ function fmtDuration(seconds: number): string {
   return m > 0 ? `${h} 小时 ${m} 分钟` : `${h} 小时`
 }
 
-/** AW 模式效率分析(基于 ActivityWatch Analytics Skill) */
+/** AW 效率分析(基于 ActivityWatch Analytics Skill,任何数据源模式可用) */
 export function AwAnalytics() {
   const [period, setPeriod] = useState('today')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<AwAnalyticsResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [awOnline, setAwOnline] = useState<boolean | null>(null)
+
+  // 检测 ActivityWatch 是否在运行
+  useEffect(() => {
+    let cancelled = false
+    void dbAwHealth().then(info => {
+      if (!cancelled) setAwOnline(Boolean(info))
+    })
+    return () => { cancelled = true }
+  }, [])
 
   const generate = useCallback(async () => {
     setLoading(true)
@@ -65,6 +75,12 @@ export function AwAnalytics() {
           Pulse 效率评分
         </span>
       </div>
+
+      {awOnline === false && (
+        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+          未检测到 ActivityWatch（默认 127.0.0.1:5600）。请先启动 ActivityWatch 再生成效率报告。
+        </p>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {PERIOD_OPTIONS.map(opt => (
