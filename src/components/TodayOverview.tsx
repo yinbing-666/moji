@@ -109,25 +109,25 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
           <span className="text-xs text-gray-400">共 {todayActivities.length} 条记录</span>
         </div>
 
-        {/* P1优化: 时间轴柱状图 - 删除hover缩放动画 */}
-        <div className="flex items-end gap-0.5 h-16">
+        {/* P1优化: 时间轴柱状图 - 高度归一化到容器,防溢出 */}
+        <div className="flex items-end gap-0.5 h-16 overflow-hidden">
           {hourlyBuckets.map((count, i) => {
             const hasActivity = count > 0
             const visual = hasActivity && todayActivities.find(a => new Date(a.timestamp).getHours() === i)
               ? categoryVisual(todayActivities.find(a => new Date(a.timestamp).getHours() === i)!.category)
               : null
-            
+            const maxCount = Math.max(...hourlyBuckets, 1)
             return (
               <div
                 key={i}
                 title={`${i.toString().padStart(2, '0')}:00 — ${count}条`}
                 className={`flex-1 min-w-[6px] rounded-t transition-opacity ${
                   hasActivity 
-                    ? 'opacity-100'  /* P1: 只用透明度变化，删除scale-y-110 */
+                    ? 'opacity-100'
                     : 'opacity-20 bg-gray-100'
                 }`}
                 style={{
-                  height: `${Math.max(count * 12, 4)}px`,
+                  height: `${Math.max((count / maxCount) * 100, count > 0 ? 6 : 0)}%`,
                   backgroundColor: visual?.hex || undefined,
                 }}
               />
