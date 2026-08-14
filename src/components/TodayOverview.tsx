@@ -109,7 +109,7 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
           <span className="text-xs text-gray-400">共 {todayActivities.length} 条记录</span>
         </div>
 
-        {/* P1优化: 时间轴柱状图 - 高度归一化到容器,防溢出 */}
+        {/* P1优化: 时间轴柱状图 - 对数缩放,小柱子也可辨;容器防溢出 */}
         <div className="flex items-end gap-0.5 h-16 overflow-hidden">
           {hourlyBuckets.map((count, i) => {
             const hasActivity = count > 0
@@ -117,6 +117,8 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
               ? categoryVisual(todayActivities.find(a => new Date(a.timestamp).getHours() === i)!.category)
               : null
             const maxCount = Math.max(...hourlyBuckets, 1)
+            // 对数缩放:log(count+1)/log(max+1),让 1 条也有 ~15% 高度,极值不被压扁
+            const ratio = Math.log(count + 1) / Math.log(maxCount + 1)
             return (
               <div
                 key={i}
@@ -127,7 +129,7 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
                     : 'opacity-20 bg-gray-100'
                 }`}
                 style={{
-                  height: `${Math.max((count / maxCount) * 100, count > 0 ? 6 : 0)}%`,
+                  height: `${Math.max(ratio * 100, count > 0 ? 8 : 0)}%`,
                   backgroundColor: visual?.hex || undefined,
                 }}
               />
