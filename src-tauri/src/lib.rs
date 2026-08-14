@@ -1,7 +1,10 @@
 mod aw;
+mod ai;
+mod aw_analytics;
 mod db;
 mod screenshot;
 mod system;
+mod uia;
 
 use db::Database;
 use std::sync::Mutex;
@@ -49,6 +52,13 @@ pub fn run() {
             // activitywatch
             aw::aw_fetch_events,
             aw::aw_health,
+            // uia text extraction (vision-free activity analysis)
+            uia::read_window_text,
+            // ai chat completions proxy (bypasses CORS)
+            ai::chat_completions,
+            // activitywatch analytics skill integration
+            aw_analytics::run_aw_analytics,
+            aw_analytics::open_aw_report,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

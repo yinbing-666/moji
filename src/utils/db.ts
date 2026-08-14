@@ -200,6 +200,32 @@ export async function dbAwHealth(options?: {
   })
 }
 
+// ── ActivityWatch Analytics (效率报告) ──
+
+export interface AwAnalyticsResult {
+  period_id: string
+  pulse: number
+  score_status: string
+  active_seconds: number
+  productive_percent: number
+  ai_seconds: number
+  deep_work_seconds: number
+  deep_work_blocks: number
+  levels: Array<{ level: string; seconds: number; percent: number; points: number }>
+  report_json: string
+  report_html: string
+}
+
+/** 运行 AW 效率分析(Python 脚本),返回关键指标 */
+export async function runAwAnalytics(period: string): Promise<AwAnalyticsResult | null> {
+  return call<AwAnalyticsResult>('run_aw_analytics', { period })
+}
+
+/** 用系统默认浏览器打开本地 HTML 报告 */
+export async function openAwReport(path: string): Promise<boolean> {
+  return (await call('open_aw_report', { path })) !== null
+}
+
 // ── System Detection ──
 
 export interface ForegroundWindowInfo {

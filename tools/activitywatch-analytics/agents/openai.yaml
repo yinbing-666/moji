@@ -1,0 +1,4 @@
+interface:
+  display_name: "ActivityWatch Analytics"
+  short_description: "Analyze ActivityWatch data into private offline reports"
+  default_prompt: "Use $analyze-activitywatch to analyze my ActivityWatch data and generate an offline report."
