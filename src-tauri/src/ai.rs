@@ -66,7 +66,7 @@ pub async fn chat_completions(req: ChatCompletionsRequest) -> Result<String, Str
         "temperature": req.temperature,
         // 关闭 thinking/reasoning 模式：活动分析与报告都不需要深度推理，
         // 关闭后更快、更省 tokens、避免 thinking 吃掉配额导致 content 截断/为空。
-        // tokenrhythm.studio 等兼容平台均支持此参数；不认识的模型会忽略它。
+        // 部分 OpenAI 兼容平台支持此参数；不认识的模型会忽略它。
         "enable_thinking": false,
     });
 
