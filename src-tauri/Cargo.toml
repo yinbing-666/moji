@@ -16,7 +16,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rusqlite = { version = "0.31", features = ["bundled"] }
+# backup feature：启用 rusqlite 的 SQLite 在线备份 API（restore_backup_to_db 恢复到打开中的连接用），无额外依赖
+rusqlite = { version = "0.31", features = ["bundled", "backup"] }
 screenshots = "0.8.10"
 base64 = "0.22"
 reqwest = { version = "0.12", features = ["json", "blocking"] }

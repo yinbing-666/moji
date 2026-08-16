@@ -168,8 +168,10 @@ pub async fn run_aw_analytics(
 pub async fn open_aw_report(path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        Command::new("cmd")
-            .args(["/C", "start", "", &path])
+        // explorer 直接以路径为参数按系统关联打开，参数化传递不经 shell 解释，
+        // 避免路径被 cmd /C start 当命令/参数注入
+        Command::new("explorer")
+            .arg(&path)
             .spawn()
             .map_err(|e| format!("打开报告失败: {e}"))?;
     }

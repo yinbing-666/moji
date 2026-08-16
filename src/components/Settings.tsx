@@ -87,10 +87,10 @@ export function Settings() {
     setBackupBusy(true)
     setBackupMsg(null)
     try {
-      const ok = await dbSaveBackup()
-      if (!ok) throw new Error('备份失败，请确认已在桌面端运行')
+      // invoke 不抛错即成功；返回值为备份文件字节数
+      const bytes = await dbSaveBackup()
       await refreshDbInfo()
-      setBackupMsg('备份已保存到本机应用数据目录')
+      setBackupMsg(`备份已保存到本机应用数据目录（${(bytes / 1024).toFixed(1)} KB）`)
     } catch (err) {
       setBackupMsg(err instanceof Error ? err.message : String(err))
     } finally {

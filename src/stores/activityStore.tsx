@@ -14,6 +14,7 @@ import {
   isSqliteAvailable,
 } from '../utils/db'
 import { loadReportHistory, removeReportHistoryItem, type ReportHistoryItem } from '../utils/reportHistory'
+import { dateStamp } from '../utils/export'
 
 export type BackgroundPreset = 'plain' | 'mint' | 'sky' | 'graphite' | 'custom'
 
@@ -64,7 +65,7 @@ interface ActivityStore {
   addActivity: (activity: Omit<Activity, 'id' | 'timestamp'>) => void
   /** 导入用：保留原始 id / timestamp */
   importActivity: (activity: Activity) => boolean
-  updateActivity: (id: string, partial: Partial<Omit<Activity, 'id' | 'timestamp'>>) => void
+  updateActivity: (id: string, partial: Partial<Omit<Activity, 'id'>>) => void
   removeActivity: (id: string) => void
   clearActivities: () => void
   /** 从 SQLite 重新加载（备份恢复后用） */
@@ -379,7 +380,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     void dbSaveActivity(activity).catch(() => {})
   }, [sqliteReady])
 
-  const updateActivity = useCallback((id: string, partial: Partial<Omit<Activity, 'id' | 'timestamp'>>) => {
+  const updateActivity = useCallback((id: string, partial: Partial<Omit<Activity, 'id'>>) => {
     setActivities(prev => {
       const next = prev.map(activity =>
         activity.id === id ? { ...activity, ...partial } : activity,
@@ -396,19 +397,25 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       id: createActivityId(),
       timestamp: new Date().toISOString(),
     }
-    // 双源并行去重：同 app+title 且在 90 秒内出现过的记录不重复新增。
-    // UIA 采集（无 durationSeconds）命中去重时，视为同一活动持续了一个采集周期，
-    // 把间隔累加到已有记录的时长上，让时间轴能反映真实停留时间。
+    // 双源并行去重：同 app+title 且在去重窗口内出现过的记录不重复新增。
+    // 窗口必须与采集间隔挂钩（至少 90 秒、1.5 倍间隔），否则默认 5 分钟间隔下
+    // 每轮采集都会超出 90 秒窗口而生成重复记录，时长累计也随之失效。
+    // UIA 采集（无 durationSeconds）命中去重时，视为同一活动持续到现在：
+    // 把本轮与该记录上次时间的实际差值累加进 durationSeconds，并刷新记录时间，
+    // 连续停留的活动只占一条记录且时长持续累计。
     const ts = Date.parse(newActivity.timestamp)
+    const dedupeWindowMs = Math.max(90_000, settings.intervalSeconds * 1000 * 1.5)
     const duplicate = activitiesRef.current.find(a =>
       a.app === newActivity.app
       && a.title === newActivity.title
-      && Math.abs(Date.parse(a.timestamp) - ts) < 90_000
+      && Math.abs(Date.parse(a.timestamp) - ts) < dedupeWindowMs
     )
     if (duplicate) {
       if (newActivity.durationSeconds === undefined) {
+        const elapsedSeconds = Math.max(1, Math.round((ts - Date.parse(duplicate.timestamp)) / 1000))
         updateActivity(duplicate.id, {
-          durationSeconds: (duplicate.durationSeconds ?? 0) + Math.max(60, settings.intervalSeconds),
+          durationSeconds: (duplicate.durationSeconds ?? 0) + elapsedSeconds,
+          timestamp: newActivity.timestamp,
         })
       }
       return
@@ -543,8 +550,8 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       const { generateReport } = await import('../utils/ai')
       setIsGeneratingReport(true)
       
-      // 筛选指定日期的活动
-      const dayActivities = activitiesRef.current.filter(a => a.timestamp.startsWith(date))
+      // 筛选指定日期的活动（timestamp 是 UTC ISO 串，转本地日期比对，避免错天）
+      const dayActivities = activitiesRef.current.filter(a => dateStamp(new Date(a.timestamp)) === date)
       
       const reportContent = await generateReport(
         dayActivities.map(a => ({

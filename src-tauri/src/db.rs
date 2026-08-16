@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, DatabaseName};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -382,24 +382,30 @@ fn backup_path(app_data_dir: &PathBuf) -> PathBuf {
 pub fn save_backup(
     db: tauri::State<'_, Database>,
     app_handle: tauri::AppHandle,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {e}"))?;
     let backup = backup_path(&app_data_dir);
-    let source = app_data_dir.join("moji.db");
 
-    fs::copy(&source, &backup)
+    // VACUUM INTO 在打开中的连接上生成一份逻辑一致且已压缩的快照，
+    // 不再 fs::copy 使用中的 moji.db（Windows 下易触发 sharing violation），
+    // 产物天然是单文件紧凑库，无需再单独 VACUUM 备份文件
+    let conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
+    // VACUUM INTO 要求目标文件不存在，先清掉旧备份
+    match fs::remove_file(&backup) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("Failed to remove old backup: {e}")),
+    }
+    conn.execute("VACUUM INTO ?1", params![backup.to_string_lossy().to_string()])
         .map_err(|e| format!("Failed to save backup: {e}"))?;
 
-    // vacuum the backup for size optimization
-    if let Ok(backup_conn) = Connection::open(&backup) {
-        let _ = backup_conn.execute_batch("PRAGMA journal_mode=DELETE; VACUUM;");
-    }
-
-    let _ = db; // keep state alive
-    Ok(())
+    // 返回备份文件字节数，让前端能确认备份真实生成（而不是序列化为 null 被误判失败）
+    fs::metadata(&backup)
+        .map(|m| m.len())
+        .map_err(|e| format!("Failed to stat backup: {e}"))
 }
 
 #[tauri::command]
@@ -421,18 +427,18 @@ pub fn restore_backup_to_db(
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {e}"))?;
     let backup = backup_path(&app_data_dir);
-    let source = app_data_dir.join("moji.db");
 
     if !backup.exists() {
         return Ok(0);
     }
 
-    // Restore backup over current DB
-    fs::copy(&backup, &source)
+    // 用 SQLite 在线备份 API 把备份写回打开中的连接，
+    // 不再 fs::copy 覆盖使用中的 moji.db（sharing violation + 旧连接页缓存与磁盘不一致），
+    // 恢复完成后同一连接即可读到新数据
+    let mut conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
+    conn.restore(DatabaseName::Main, &backup, None::<fn(rusqlite::backup::Progress)>)
         .map_err(|e| format!("Failed to restore backup: {e}"))?;
 
-    // Reopen connection count
-    let conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
     let total: usize = conn
         .query_row("SELECT COUNT(*) FROM activities", [], |row| row.get(0))
         .map_err(|e| format!("Failed to count after restore: {e}"))?;

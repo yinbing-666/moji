@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Activity } from '../stores/activityStore'
 import { useActivityStore } from '../stores/activityStore'
 import { categoryVisual } from '../utils/categoryStyles'
-import { exportReportAsMarkdown } from '../utils/export'
+import { dateStamp, exportReportAsMarkdown } from '../utils/export'
 import { formatDuration } from '../utils/format'
 import { AwAnalytics } from './AwAnalytics'
 
@@ -26,10 +26,9 @@ export function ReportView({ activities }: ReportViewProps) {
     deleteReport,
   } = useActivityStore()
   const [copied, setCopied] = useState(false)
-  const [reportDate, setReportDate] = useState(() => {
-    const now = new Date()
-    return now.toISOString().slice(0, 10)
-  })
+  // 默认日期与筛选都用本地时区语义：timestamp 是 UTC ISO 串，
+  // startsWith 前缀匹配在东八区 0-8 点会把活动算错天
+  const [reportDate, setReportDate] = useState(() => dateStamp())
 
   const handleCopyReport = async () => {
     if (!lastReport) return
@@ -50,7 +49,8 @@ export function ReportView({ activities }: ReportViewProps) {
 
   /* P1优化: 报告数据聚合 */
   const reportData = useMemo(() => {
-    const dayActivities = activities.filter(a => a.timestamp.startsWith(reportDate))
+    // timestamp 是 UTC ISO 串，先转成本地日期再与所选日期比对，避免错天
+    const dayActivities = activities.filter(a => dateStamp(new Date(a.timestamp)) === reportDate)
     
     if (dayActivities.length === 0) {
       return null
