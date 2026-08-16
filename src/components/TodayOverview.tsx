@@ -83,23 +83,27 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
   const topCatVisual = categoryVisual(stats.topCat)
   const totalDurationText = formatDuration(stats.totalSeconds)
 
-  /* P1优化: 统计卡片 - 使用大圆角+渐变背景（层级1） */
+  /* 统计卡：今日总时长为主指标（深色英雄卡），应用/类型为次级 */
   return (
     <>
       <section className="mb-6 grid gap-3 sm:grid-cols-3">
-        {/* 今日记录 - 主数字使用text-h2 */}
-        <div className="rounded-2xl bg-gradient-to-br from-gray-50 to-white p-5 shadow-card transition-shadow hover:shadow-elevated">
-          <div className="flex items-center gap-1.5">
-            <svg className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <p className="text-xs font-medium text-gray-500">今日记录</p>
+        {/* 今日总时长 - 深色英雄卡，与侧边栏形成呼应 */}
+        <div className="rounded-2xl bg-slate-900 p-5 shadow-card">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <svg className="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-xs font-medium text-slate-400">今日投入</p>
+            </div>
+            <span className="rounded-full bg-white/10 px-2 py-0.5 text-2xs tabular-nums text-slate-300">{stats.todayCount} 条记录</span>
           </div>
-          <p className="mt-1.5 text-h2 font-bold tabular-nums text-gray-900">
-            {stats.todayCount}
+          <p className="mt-2 text-h2 font-bold tabular-nums text-white">
+            {totalDurationText ?? '—'}
+            {!totalDurationText && <span className="ml-1 text-sm font-normal text-slate-500">暂无时长数据</span>}
           </p>
-          <p className="mt-1 text-xs text-gray-400">
-            {totalDurationText ? `约 ${totalDurationText} · ` : ''}较昨日 <span className={stats.yesterdayCount > 0 ? 'text-teal-600' : 'text-gray-600'}>{stats.yesterdayCount}</span>
+          <p className="mt-1 text-xs text-slate-500">
+            较昨日 <span className="text-slate-300">{stats.yesterdayCount}</span> 条
           </p>
         </div>
 
@@ -124,7 +128,6 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
             <p className="text-xs font-medium text-gray-500">主要类型</p>
           </div>
           <div className="mt-1.5 flex items-center gap-2">
-            {/* P1优化: 分类点使用新颜色 */}
             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: topCatVisual.hex }} />
             <p className="truncate text-lg font-semibold text-gray-900">{topCatVisual.label}</p>
           </div>
@@ -133,7 +136,7 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
       </section>
 
       {/* P1优化: 时间轴容器 - 使用轻量样式（层级3） */}
-      <section className="mb-6 rounded-lg bg-white/80 backdrop-blur-sm p-4 border border-gray-100">
+      <section className="mb-6 rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-h3 font-semibold text-gray-900">今日时间轴</h2>
           <span className="text-xs text-gray-400">共 {todayActivities.length} 条记录</span>

@@ -177,7 +177,7 @@ export function Settings() {
   return (
     <div className="space-y-6">
       {/* P1优化: 基础设置区 - 层级2：标准卡片 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
         <h2 className="text-h3 font-semibold text-gray-900 mb-4">基础设置</h2>
 
         {/* 数据源选择 - 单选按钮组 */}
@@ -326,7 +326,7 @@ export function Settings() {
       </section>
 
       {/* 采集行为 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
         <h2 className="text-h3 font-semibold text-gray-900 mb-4">采集行为</h2>
 
         <fieldset className="mb-4">
@@ -407,7 +407,7 @@ export function Settings() {
       </section>
 
       {/* 隐私排除 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
         <h2 className="text-h3 font-semibold text-gray-900 mb-4">隐私排除</h2>
 
         <fieldset className="mb-4">
@@ -457,7 +457,7 @@ export function Settings() {
       </section>
 
       {/* P1优化: 外观设置 - 层级2：标准卡片 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
         <h2 className="text-h3 font-semibold text-gray-900 mb-4">外观与主题</h2>
 
         {/* 背景预设选择 - 卡片网格 */}
@@ -541,7 +541,7 @@ export function Settings() {
       </section>
 
       {/* P1优化: 数据管理 - 层级2：标准卡片 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
         <h2 className="text-h3 font-semibold text-gray-900 mb-4">数据管理</h2>
 
         <div className="space-y-3">
@@ -594,7 +594,7 @@ export function Settings() {
       </section>
 
       {/* 数据库与备份 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
         <h2 className="text-h3 font-semibold text-gray-900 mb-4">数据库与备份</h2>
         <div className="mb-4 space-y-1 rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2 text-xs text-gray-600">
           <p>状态：{dbStatus ?? (sqliteReady ? '检测中…' : '未连接')}</p>
@@ -632,7 +632,7 @@ export function Settings() {
 
       {/* P1优化: 保存按钮 - 固定底栏风格 */}
       {hasUnsavedChanges && (
-        <div className="sticky bottom-16 z-20 rounded-lg border border-brand-200 bg-brand-50 p-3 shadow-sm">
+        <div className="sticky bottom-16 z-20 rounded-lg border border-brand-200 bg-brand-50 p-3 shadow-card">
           <div className="flex items-center justify-between gap-4">
             <span className="text-sm text-brand-800">有未保存的更改</span>
             <div className="flex gap-2">
