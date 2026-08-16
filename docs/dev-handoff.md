@@ -19,7 +19,7 @@
 
 关键链路：
 - **识别**：`screenshot.rs` 窗口枚举（captureImages=false 不截图）→ `uia.rs read_window_text`（UIA 文本，噪声 denylist）→ `ai.ts analyzeWindowText`（URL 提取 + 本地预判 + 强 prompt）→ Rust `ai.rs chat_completions`（reqwest 代理，绕过 CORS，`enable_thinking:false`）
-- **模型**：`textModel` 默认 `deepseek-v4-flash-0731`（thinking 模型，活动分析 max_tokens=600）
+- **模型**：`textModel` 默认 `deepseek-chat`（thinking 模型，活动分析 max_tokens=600）
 - **效率分析**：`aw_analytics.rs` 调 Python 脚本 `tools/activitywatch-analytics/`（ActivityWatch Analytics Skill，用户私有 Gitea）→ report.json → 前端 `AwAnalytics.tsx` 展示 Pulse 评分/深度工作/等级分布，`launch_activitywatch` 可一键启动 AW
 
 ## 三、关键文件职责

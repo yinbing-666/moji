@@ -27,3 +27,16 @@ app-current.png
 app-final.png
 app-fixed2.png
 screenshots/
+
+# Agent / session working directories
+.agent-teams/
+.hermes/
+_awskill/
+_recover/
+_verify_*.cjs
+
+# Local notes & screenshots (not for publish)
+DEAI-UI-OPTIMIZATION.md
+IDEA.md
+app-*.png
+docs/dev-handoff.md
