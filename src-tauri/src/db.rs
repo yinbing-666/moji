@@ -34,22 +34,6 @@ pub struct DbReportHistory {
     pub content: String,
 }
 
-#[derive(Serialize)]
-pub struct PaginatedResult {
-    pub total: usize,
-    pub items: Vec<DbActivity>,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PaginatedParams {
-    pub offset: usize,
-    pub limit: usize,
-    pub category: Option<String>,
-    pub today_only: Option<bool>,
-    pub keyword: Option<String>,
-}
-
 pub fn init_database(app_data_dir: &PathBuf) -> Result<Connection, String> {
     fs::create_dir_all(app_data_dir)
         .map_err(|e| format!("Failed to create app data directory: {e}"))?;
@@ -183,89 +167,6 @@ pub fn db_load_activities(db: tauri::State<'_, Database>) -> Result<Vec<DbActivi
         result.push(row.map_err(|e| format!("Failed to read row: {e}"))?);
     }
     Ok(result)
-}
-
-#[tauri::command]
-pub fn db_load_activities_paginated(
-    db: tauri::State<'_, Database>,
-    params: PaginatedParams,
-) -> Result<PaginatedResult, String> {
-    let conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
-
-    let mut conditions: Vec<String> = Vec::new();
-    let mut bind_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-
-    if let Some(ref cat) = params.category {
-        if !cat.is_empty() && cat != "all" {
-            conditions.push(format!("category = ?{}", bind_values.len() + 1));
-            bind_values.push(Box::new(cat.clone()));
-        }
-    }
-    if params.today_only.unwrap_or(false) {
-        conditions.push(format!(
-            "date(timestamp) = date('now', 'localtime')"
-        ));
-    }
-    if let Some(ref kw) = params.keyword {
-        let kw_trimmed = kw.trim();
-        if !kw_trimmed.is_empty() {
-            conditions.push(format!(
-                "(app_name LIKE ?{} OR title LIKE ?{} OR description LIKE ?{})",
-                bind_values.len() + 1,
-                bind_values.len() + 2,
-                bind_values.len() + 3,
-            ));
-            let pattern = format!("%{}%", kw_trimmed);
-            bind_values.push(Box::new(pattern.clone()));
-            bind_values.push(Box::new(pattern.clone()));
-            bind_values.push(Box::new(pattern));
-        }
-    }
-
-    let where_clause = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", conditions.join(" AND "))
-    };
-
-    // count
-    let count_sql = format!("SELECT COUNT(*) FROM activities {where_clause}");
-    let count_params: Vec<&dyn rusqlite::types::ToSql> =
-        bind_values.iter().map(|v| v.as_ref()).collect();
-    let total: usize = conn
-        .query_row(&count_sql, rusqlite::params_from_iter(&count_params), |row| {
-            row.get(0)
-        })
-        .map_err(|e| format!("Failed to count activities: {e}"))?;
-
-    // paginated query
-    let query_sql = format!(
-        "SELECT id, timestamp, category, app_name, title, description, screenshot_base64, duration_seconds
-         FROM activities {where_clause}
-         ORDER BY timestamp DESC
-         LIMIT ?{} OFFSET ?{}",
-        bind_values.len() + 1,
-        bind_values.len() + 2,
-    );
-    let mut all_params: Vec<Box<dyn rusqlite::types::ToSql>> = bind_values;
-    all_params.push(Box::new(params.limit as i64));
-    all_params.push(Box::new(params.offset as i64));
-    let query_params: Vec<&dyn rusqlite::types::ToSql> =
-        all_params.iter().map(|v| v.as_ref()).collect();
-
-    let mut stmt = conn
-        .prepare(&query_sql)
-        .map_err(|e| format!("Failed to prepare paginated query: {e}"))?;
-    let rows = stmt
-        .query_map(rusqlite::params_from_iter(&query_params), row_to_activity)
-        .map_err(|e| format!("Failed to query activities: {e}"))?;
-
-    let mut items = Vec::new();
-    for row in rows {
-        items.push(row.map_err(|e| format!("Failed to read row: {e}"))?);
-    }
-
-    Ok(PaginatedResult { total, items })
 }
 
 #[tauri::command]

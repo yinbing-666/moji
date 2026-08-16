@@ -648,12 +648,9 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
 
   /* P1优化: 清空全部数据 */
   const clearAllActivities = useCallback(async (): Promise<void> => {
+    // clearActivities 已封装清空内存与 SQLite（dbClearActivities），不再重复调用
     clearActivities()
-    // 同时清空SQLite
-    if (sqliteReady) {
-      await dbClearActivities()
-    }
-  }, [clearActivities, sqliteReady])
+  }, [clearActivities])
 
   return (
     <ActivityContext.Provider value={{

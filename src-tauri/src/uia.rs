@@ -161,10 +161,10 @@ fn collect_window_text(hwnd: HWND, max_chars: usize) -> Result<CollectedText, St
 
     let mut lines: Vec<String> = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    let mut char_budget = max_chars;
+    let mut byte_budget = max_chars;
     let mut element_count = 0usize;
 
-    walk_element(&walker, &root, &mut lines, &mut seen, &mut char_budget, &mut element_count);
+    walk_element(&walker, &root, &mut lines, &mut seen, &mut byte_budget, &mut element_count, 0);
 
     Ok(CollectedText {
         text: lines.join("\n"),
@@ -173,15 +173,20 @@ fn collect_window_text(hwnd: HWND, max_chars: usize) -> Result<CollectedText, St
 }
 
 #[cfg(target_os = "windows")]
+/// 递归遍历的最大深度，避免畸形 UIA 树导致栈溢出或采集耗时失控。
+const MAX_WALK_DEPTH: usize = 20;
+
+#[cfg(target_os = "windows")]
 fn walk_element(
     walker: &IUIAutomationTreeWalker,
     element: &IUIAutomationElement,
     lines: &mut Vec<String>,
     seen: &mut std::collections::HashSet<String>,
-    char_budget: &mut usize,
+    byte_budget: &mut usize,
     element_count: &mut usize,
+    depth: usize,
 ) {
-    if *char_budget == 0 {
+    if *byte_budget == 0 || depth > MAX_WALK_DEPTH {
         return;
     }
 
@@ -215,11 +220,11 @@ fn walk_element(
     if !parts.is_empty() {
         *element_count += 1;
         let line = parts.join("：");
-        let needed = line.len().min(*char_budget);
-        if needed > 0 && seen.insert(line.clone()) {
-            // 逐字符预算控制，截断超长行
-            let pushed = if line.len() > *char_budget {
-                let mut end = *char_budget;
+        // 截断预算统一按字节计量（与 UTF-8 字符边界处理一致），
+        // 避免之前字节数与字符数混用导致中文预算被低估、实际采集超支。
+        if seen.insert(line.clone()) {
+            let pushed = if line.len() > *byte_budget {
+                let mut end = *byte_budget;
                 while !line.is_char_boundary(end) {
                     end -= 1;
                 }
@@ -227,19 +232,19 @@ fn walk_element(
             } else {
                 line
             };
-            *char_budget = char_budget.saturating_sub(pushed.chars().count());
+            *byte_budget = byte_budget.saturating_sub(pushed.len());
             lines.push(pushed);
         }
     }
 
-    // 深度优先遍历子元素
+    // 深度优先遍历子元素（深度 +1，超出上限即停止）
     if let Ok(child) = unsafe { walker.GetFirstChildElement(element) } {
-        walk_element(walker, &child, lines, seen, char_budget, element_count);
+        walk_element(walker, &child, lines, seen, byte_budget, element_count, depth + 1);
     }
 
-    // 兄弟元素
+    // 兄弟元素（同深度）
     if let Ok(next) = unsafe { walker.GetNextSiblingElement(element) } {
-        walk_element(walker, &next, lines, seen, char_budget, element_count);
+        walk_element(walker, &next, lines, seen, byte_budget, element_count, depth);
     }
 }
 

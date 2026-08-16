@@ -24,19 +24,6 @@ interface DbReportHistory {
   content: string
 }
 
-interface PaginatedParams {
-  offset: number
-  limit: number
-  category?: string | null
-  todayOnly?: boolean | null
-  keyword?: string | null
-}
-
-interface PaginatedResult {
-  total: number
-  items: DbActivity[]
-}
-
 let invoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null
 
 async function getInvoke() {
@@ -102,19 +89,6 @@ export async function dbSaveActivity(activity: {
 
 export async function dbLoadActivities(): Promise<DbActivity[] | null> {
   return call<DbActivity[]>('db_load_activities')
-}
-
-export async function dbLoadActivitiesPaginated(params: PaginatedParams): Promise<PaginatedResult | null> {
-  // Tauri 2 command args: for struct params, pass as object with camelCase keys
-  return call<PaginatedResult>('db_load_activities_paginated', {
-    params: {
-      offset: params.offset,
-      limit: params.limit,
-      category: params.category ?? null,
-      todayOnly: params.todayOnly ?? null,
-      keyword: params.keyword ?? null,
-    },
-  })
 }
 
 export async function dbDeleteActivity(id: string): Promise<void> {

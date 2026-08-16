@@ -88,7 +88,6 @@ pub fn run() {
             // db: activities
             db::db_save_activity,
             db::db_load_activities,
-            db::db_load_activities_paginated,
             db::db_delete_activity,
             db::db_clear_activities,
             db::db_import_activities,

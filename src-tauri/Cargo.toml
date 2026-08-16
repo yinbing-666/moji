@@ -2,7 +2,6 @@
 name = "xiaohei-daily"
 version = "0.1.0"
 description = "AI 自动工作日报生成工具"
-authors = ["you"]
 edition = "2021"
 
 [lib]
@@ -20,7 +19,7 @@ serde_json = "1"
 rusqlite = { version = "0.31", features = ["bundled", "backup"] }
 screenshots = "0.8.10"
 base64 = "0.22"
-reqwest = { version = "0.12", features = ["json", "blocking"] }
+reqwest = { version = "0.12", features = ["json"] }
 # windows crate：完整 COM 绑定，用于 UI Automation 文本采集（windows-sys 仅含常量，无 UIA 接口）
 windows = { version = "0.61", features = [
   "Win32_Foundation",

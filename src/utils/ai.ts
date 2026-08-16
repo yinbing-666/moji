@@ -213,7 +213,7 @@ export async function testAiConnection(
     if (!testModel) {
       return { ok: false, message: '未配置模型名称' }
     }
-    await chatCompletions(key, url, testModel, [{ role: 'user', content: 'ping' }], 5, 0)
+    await chatCompletions(key, url, testModel, [{ role: 'user', content: 'ping' }], 32, 0)
     return { ok: true, message: '连接成功' }
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error) }
