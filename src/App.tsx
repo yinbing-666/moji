@@ -193,15 +193,15 @@ function AppShell() {
   return (
     <div className="flex h-screen overflow-hidden">
       {/* 侧边栏：墨色（呼应品牌），导航 + 采集控制常驻 */}
-      <aside className="flex w-60 shrink-0 flex-col bg-slate-900 text-slate-300">
+      <aside className="flex w-60 shrink-0 flex-col bg-zinc-900 text-zinc-300">
         {/* Logo 区 */}
         <div className="flex items-center gap-3 px-5 pb-5 pt-6">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-base font-bold text-slate-900">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-base font-bold text-zinc-900">
             墨
           </div>
           <div>
             <p className="text-sm font-bold tracking-wide text-white">墨记</p>
-            <p className="text-2xs text-slate-500">记录工作痕迹</p>
+            <p className="text-2xs text-zinc-500">记录工作痕迹</p>
           </div>
         </div>
 
@@ -216,7 +216,7 @@ function AppShell() {
               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 page === item.page
                   ? 'bg-white/10 text-white'
-                  : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                  : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
               }`}
             >
               <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -234,11 +234,11 @@ function AppShell() {
         <div className="space-y-3 border-t border-white/10 px-4 pb-5 pt-4">
           <div className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-2">
-              <span className={`h-2 w-2 rounded-full ${statusActive ? 'bg-brand-400 animate-pulse-dot' : 'bg-slate-600'}`} />
-              <span className={statusActive ? 'text-slate-200' : 'text-slate-500'}>{statusLabel}</span>
+              <span className={`h-2 w-2 rounded-full ${statusActive ? 'bg-brand-400 animate-pulse-dot' : 'bg-zinc-600'}`} />
+              <span className={statusActive ? 'text-zinc-200' : 'text-zinc-500'}>{statusLabel}</span>
             </span>
             {(awEnabled || windowTextEnabled) && (
-              <span className="rounded bg-white/5 px-1.5 py-0.5 text-2xs text-slate-500">
+              <span className="rounded bg-white/5 px-1.5 py-0.5 text-2xs text-zinc-500">
                 {awEnabled && windowTextEnabled ? '双源' : awEnabled ? 'AW' : '文本'}
               </span>
             )}
@@ -250,7 +250,7 @@ function AppShell() {
             disabled={!windowTextEnabled ? false : !isRunning && !isConfigured}
             className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               isRunning
-                ? 'bg-white/10 text-slate-200 hover:bg-white/15'
+                ? 'bg-white/10 text-zinc-200 hover:bg-white/15'
                 : 'bg-brand-500 text-white hover:bg-brand-400'
             }`}
           >
@@ -262,7 +262,7 @@ function AppShell() {
               type="button"
               onClick={() => void captureNow()}
               disabled={!isConfigured || isCapturing || isAnalyzing}
-              className="w-full rounded-lg px-4 py-1.5 text-xs text-slate-500 transition-colors hover:text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+              className="w-full rounded-lg px-4 py-1.5 text-xs text-zinc-500 transition-colors hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isCapturing || isAnalyzing ? '处理中…' : '立即采集一次'}
             </button>
@@ -273,7 +273,7 @@ function AppShell() {
       {/* 内容区 */}
       <main
         className="relative flex-1 overflow-y-auto"
-        style={{ background: 'var(--app-bg, #f8fafc)' }}
+        style={{ background: 'var(--app-bg, #fafafa)' }}
       >
         {/* 错误提示 */}
         {error && (

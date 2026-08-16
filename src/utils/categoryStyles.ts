@@ -34,10 +34,10 @@ export const CATEGORY_VISUALS: Record<Activity['category'], CategoryVisual> = {
   },
   doc: {
     label: '文档',
-    badge: 'bg-teal-50 text-teal-700 ring-teal-100',
-    dot: 'bg-teal-500',
-    hex: '#0d9488',           // 与品牌色系协调
-    iconBg: 'from-teal-500 to-cyan-600',
+    badge: 'bg-sky-50 text-sky-700 ring-sky-100',
+    dot: 'bg-sky-500',
+    hex: '#0284c7',           // 天空蓝，与品牌青错开色相
+    iconBg: 'from-sky-500 to-blue-600',
     icon: 'Doc',              // 用英文替代emoji 📄
   },
   communication: {

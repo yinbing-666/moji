@@ -668,6 +668,6 @@ function getBackgroundPreview(preset: BackgroundPreset): string {
     case 'sky': return 'linear-gradient(135deg, #dceefb 0%, #e8f0fe 50%, #f0f4f8 100%)'
     case 'graphite': return 'linear-gradient(135deg, #e8eaed 0%, #f1f3f4 50%, #f8f9fa 100%)'
     case 'custom': return 'repeating-conic-gradient(#f3f4f6 0% 25%, #fff 0% 50%) 50% / 10px 10px'
-    default: return '#f8fafc'
+    default: return '#fafafa'
   }
 }
