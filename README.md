@@ -49,6 +49,30 @@
 - 仪表盘：展示今日记录数、主要应用、主要类型、最近活动和手动采集入口。
 - 中文界面：主流程和设置项已中文化，应用名为“墨记”。
 
+## 环境要求与依赖
+
+### 必需（必须满足才能运行）
+
+| 依赖 | 说明 |
+|---|---|
+| **Windows 10 / 11** | 窗口采集基于 Windows UI Automation，暂不支持其他系统 |
+| **OpenAI 兼容 API Key** | 活动识别与报告生成依赖 AI 模型。不配置时采集、记录、时间轴等本地功能仍可用，但不会产出 AI 归纳与报告 |
+| **Node.js 20+** | 前端构建（`npm install` / `npm run build` / `npm run tauri dev`） |
+| **Rust stable 工具链** | 后端 Tauri/Rust 编译（`cargo check` / `npm run tauri build`），含 MSVC 链接器（Visual Studio Build Tools） |
+
+### 可选（不装不影响核心功能）
+
+| 依赖 | 作用 | 不装的影响 |
+|---|---|---|
+| **ActivityWatch** | 作为活动时长数据源（透传事件时长，与窗口文本采集互补） | 时长统计仅依赖本地连续采集周期累计，数据精度略低 |
+| **系统托盘/最小化** | 已内置，无额外依赖 | — |
+
+### AI 接口说明
+
+- 任何兼容 OpenAI `/chat/completions` 的服务均可（OpenAI / DeepSeek / 各类网关），在设置中填写 Base URL 与模型名，默认留空。
+- 使用**纯文本模型**即可，无需多模态视觉模型（窗口内容经 UI Automation 读取为文本后送模型归纳）。
+- API Key 只保存在本机设置中，不应写入代码仓库、日志。
+
 ## 快速开始
 
 ```bash
