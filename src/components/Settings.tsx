@@ -38,12 +38,12 @@ export function Settings() {
     setHasUnsavedChanges(false)
   }, [settings])
 
-  // 挂载时刷新数据库诊断信息
+  // 挂载时刷新数据库诊断信息（null = 后端不可调用，如纯浏览器调试模式）
   useEffect(() => {
     void (async () => {
       const diag = await dbDiagnoseDb()
       const hasBackup = await dbLoadBackup()
-      setDbStatus(diag ?? 'SQLite 已连接')
+      setDbStatus(diag ?? '未检测到桌面后端（浏览器模式 SQLite 不可用）')
       setBackupExists(Boolean(hasBackup))
     })()
   }, [])
@@ -79,7 +79,7 @@ export function Settings() {
   const refreshDbInfo = useCallback(async () => {
     const diag = await dbDiagnoseDb()
     const hasBackup = await dbLoadBackup()
-    setDbStatus(diag ?? 'SQLite 已连接')
+    setDbStatus(diag ?? '未检测到桌面后端（浏览器模式 SQLite 不可用）')
     setBackupExists(Boolean(hasBackup))
   }, [])
 

@@ -147,7 +147,7 @@ pub fn diagnose_db(app_handle: tauri::AppHandle) -> Result<String, String> {
     let db_path = app_data_dir.join("moji.db");
 
     if !db_path.exists() {
-        return Ok("Database file not found".to_string());
+        return Ok("数据库文件尚未创建（首次运行后自动生成）".to_string());
     }
 
     let size = std::fs::metadata(&db_path)
@@ -155,5 +155,5 @@ pub fn diagnose_db(app_handle: tauri::AppHandle) -> Result<String, String> {
         .unwrap_or(0);
 
     let size_kb = size as f64 / 1024.0;
-    Ok(format!("DB exists, size: {:.1} KB", size_kb))
+    Ok(format!("数据库正常，大小: {:.1} KB", size_kb))
 }
