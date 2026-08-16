@@ -139,7 +139,7 @@ function Dashboard() {
         <TodayOverview activities={activities} />
 
         {/* P1优化: 最近活动卡片 - 左侧色条强调 */}
-        <section className="mb-6 border-l-4 border-l-brand-500 bg-white rounded-r-xl p-4 shadow-sm">
+        <section className="mb-6 border-l-4 border-l-brand-500 bg-white rounded-r-xl p-4 shadow-card">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-gray-500">最近活动</p>
@@ -175,35 +175,29 @@ function Dashboard() {
           </div>
         </section>
 
-        {/* P1优化: Tab切换器 - 下划线指示器替代背景高亮 */}
+        {/* P1优化: Tab切换器 - 下划线指示器（伪元素实现，切换时有平滑过渡） */}
         <div className="mb-6 flex border-b border-gray-200">
           <button
             type="button"
             onClick={() => setTab('timeline')}
-            className={`px-4 py-2 text-sm font-medium transition-colors relative ${
-              tab === 'timeline' 
-                ? 'text-brand-700' 
-                : 'text-gray-500 hover:text-gray-700'
+            className={`relative px-4 py-2 text-sm font-medium transition-colors after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:origin-left after:bg-brand-500 after:transition-transform after:duration-200 ${
+              tab === 'timeline'
+                ? 'text-brand-700 after:scale-x-100'
+                : 'text-gray-500 after:scale-x-0 hover:text-gray-700'
             }`}
           >
             活动
-            {tab === 'timeline' && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-500" />
-            )}
           </button>
           <button
             type="button"
             onClick={() => setTab('report')}
-            className={`px-4 py-2 text-sm font-medium transition-colors relative ${
-              tab === 'report' 
-                ? 'text-brand-700' 
-                : 'text-gray-500 hover:text-gray-700'
+            className={`relative px-4 py-2 text-sm font-medium transition-colors after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:origin-left after:bg-brand-500 after:transition-transform after:duration-200 ${
+              tab === 'report'
+                ? 'text-brand-700 after:scale-x-100'
+                : 'text-gray-500 after:scale-x-0 hover:text-gray-700'
             }`}
           >
             报告
-            {tab === 'report' && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-500" />
-            )}
           </button>
         </div>
 

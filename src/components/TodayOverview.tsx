@@ -47,14 +47,24 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
     return { todayCount, yesterdayCount, topApp, topAppCount, topCat, topCatCount }
   }, [todayActivities])
 
-  /* P1优化: 时间轴数据 - 按小时聚合 */
+  /* P1优化: 时间轴数据 - 按小时聚合（同时统计每小时的主要分类，避免渲染时反复查找） */
   const hourlyBuckets = useMemo(() => {
-    const buckets: number[] = Array.from({ length: 24 }, () => 0)
+    const counts: number[] = Array.from({ length: 24 }, () => 0)
+    const catCounts: Map<Activity['category'], number>[] = Array.from({ length: 24 }, () => new Map())
     for (const a of todayActivities) {
       const h = new Date(a.timestamp).getHours()
-      buckets[h]++
+      counts[h]++
+      catCounts[h].set(a.category, (catCounts[h].get(a.category) || 0) + 1)
     }
-    return buckets
+    const dominant = catCounts.map(counts2 => {
+      let best: Activity['category'] | null = null
+      let bestCount = 0
+      for (const [cat, c] of counts2) {
+        if (c > bestCount) { best = cat; bestCount = c }
+      }
+      return best
+    })
+    return { counts, dominant }
   }, [todayActivities])
 
   /* P1优化: 分类分布 */
@@ -73,8 +83,13 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
     <>
       <section className="mb-6 grid gap-3 sm:grid-cols-3">
         {/* 今日记录 - 主数字使用text-h2 */}
-        <div className="rounded-2xl bg-gradient-to-br from-gray-50 to-white p-5 shadow-sm transition-shadow hover:shadow-md">
-          <p className="text-xs font-medium text-gray-500">今日记录</p>
+        <div className="rounded-2xl bg-gradient-to-br from-gray-50 to-white p-5 shadow-card transition-shadow hover:shadow-elevated">
+          <div className="flex items-center gap-1.5">
+            <svg className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <p className="text-xs font-medium text-gray-500">今日记录</p>
+          </div>
           <p className="mt-1.5 text-h2 font-bold tabular-nums text-gray-900">
             {stats.todayCount}
           </p>
@@ -84,15 +99,25 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
         </div>
 
         {/* 主要应用 - 使用标准卡片（层级2） */}
-        <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
-          <p className="text-xs font-medium text-gray-500">主要应用</p>
+        <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card transition-shadow hover:shadow-elevated">
+          <div className="flex items-center gap-1.5">
+            <svg className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V9m4 8V5m4 12v-6M4 21h16a1 1 0 001-1V4a1 1 0 00-1-1H4a1 1 0 00-1 1v16a1 1 0 001 1z" />
+            </svg>
+            <p className="text-xs font-medium text-gray-500">主要应用</p>
+          </div>
           <p className="mt-1.5 truncate text-lg font-semibold text-gray-900">{stats.topApp || '-'}</p>
           <p className="mt-1 text-xs text-gray-400">{stats.topAppCount} 条记录</p>
         </div>
 
         {/* 主要类型 - 带分类色标识 */}
-        <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
-          <p className="text-xs font-medium text-gray-500">主要类型</p>
+        <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card transition-shadow hover:shadow-elevated">
+          <div className="flex items-center gap-1.5">
+            <svg className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+            </svg>
+            <p className="text-xs font-medium text-gray-500">主要类型</p>
+          </div>
           <div className="mt-1.5 flex items-center gap-2">
             {/* P1优化: 分类点使用新颜色 */}
             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: topCatVisual.hex }} />
@@ -111,12 +136,11 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
 
         {/* P1优化: 时间轴柱状图 - 对数缩放,小柱子也可辨;容器防溢出 */}
         <div className="flex items-end gap-0.5 h-16 overflow-hidden">
-          {hourlyBuckets.map((count, i) => {
+          {hourlyBuckets.counts.map((count, i) => {
             const hasActivity = count > 0
-            const visual = hasActivity && todayActivities.find(a => new Date(a.timestamp).getHours() === i)
-              ? categoryVisual(todayActivities.find(a => new Date(a.timestamp).getHours() === i)!.category)
-              : null
-            const maxCount = Math.max(...hourlyBuckets, 1)
+            const dominantCat = hourlyBuckets.dominant[i]
+            const visual = dominantCat ? categoryVisual(dominantCat) : null
+            const maxCount = Math.max(...hourlyBuckets.counts, 1)
             // 对数缩放:log(count+1)/log(max+1),让 1 条也有 ~15% 高度,极值不被压扁
             const ratio = Math.log(count + 1) / Math.log(maxCount + 1)
             return (
@@ -125,7 +149,7 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
                 title={`${i.toString().padStart(2, '0')}:00 — ${count}条`}
                 className={`flex-1 min-w-[6px] rounded-t transition-opacity ${
                   hasActivity 
-                    ? 'opacity-100'
+                    ? 'opacity-100 hover:opacity-75' 
                     : 'opacity-20 bg-gray-100'
                 }`}
                 style={{
@@ -149,7 +173,7 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
 
       {/* P1优化: 分类分布 - 使用左侧色条强调（差异化设计） */}
       {categoryDistribution.length > 0 && (
-        <section className="mb-6 border-l-4 border-l-brand-500 bg-white rounded-r-xl p-4 shadow-sm">
+        <section className="mb-6 border-l-4 border-l-brand-500 bg-white rounded-r-xl p-4 shadow-card">
           <h2 className="text-h3 font-semibold text-gray-900 mb-3">分类分布</h2>
           
           {/* 分布条 */}

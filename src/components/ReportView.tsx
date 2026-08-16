@@ -38,11 +38,22 @@ export function ReportView({ activities }: ReportViewProps) {
       catMap.set(a.category, (catMap.get(a.category) || 0) + 1)
     }
 
-    // 时间分布（按小时）
+    // 时间分布（按小时，同时记录每小时主要分类用于着色）
     const hourlyBuckets = Array.from({ length: 24 }, () => 0)
+    const hourlyCats: Map<Activity['category'], number>[] = Array.from({ length: 24 }, () => new Map())
     for (const a of dayActivities) {
-      hourlyBuckets[new Date(a.timestamp).getHours()]++
+      const h = new Date(a.timestamp).getHours()
+      hourlyBuckets[h]++
+      hourlyCats[h].set(a.category, (hourlyCats[h].get(a.category) || 0) + 1)
     }
+    const hourlyDominant: (Activity['category'] | null)[] = hourlyCats.map(cats => {
+      let best: Activity['category'] | null = null
+      let bestCount = 0
+      for (const [cat, c] of cats) {
+        if (c > bestCount) { best = cat; bestCount = c }
+      }
+      return best
+    })
 
     return {
       total: dayActivities.length,
@@ -52,8 +63,7 @@ export function ReportView({ activities }: ReportViewProps) {
         .sort((a, b) => b.count - a.count),
       categories: Array.from(catMap.entries()).sort((a, b) => b[1] - a[1]),
       hourly: hourlyBuckets,
-      startTime: dayActivities[dayActivities.length - 1]?.timestamp,
-      endTime: dayActivities[0]?.timestamp,
+      hourlyDominant,
     }
   }, [activities, reportDate])
 
@@ -73,7 +83,7 @@ export function ReportView({ activities }: ReportViewProps) {
       <AwAnalytics />
 
       {/* 报告控制栏 - 层级2：标准卡片 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-sm">
+      <section className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="report-date" className="text-xs font-medium text-gray-500">选择日期</label>
@@ -103,7 +113,7 @@ export function ReportView({ activities }: ReportViewProps) {
 
       {!reportData ? (
         /* P1优化: 无数据提示 - 使用左侧色条风格 */
-        <section className="border-l-4 border-l-gray-300 bg-white rounded-r-xl p-6 shadow-sm text-center">
+        <section className="border-l-4 border-l-gray-300 bg-white rounded-r-xl p-6 shadow-card text-center">
           <svg className="mx-auto h-12 w-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
@@ -114,17 +124,17 @@ export function ReportView({ activities }: ReportViewProps) {
         <>
           {/* P1优化: 统计概览 - 层级1：大圆角渐变背景 */}
           <section className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl bg-gradient-to-br from-gray-50 to-white p-5 shadow-sm">
+            <div className="rounded-2xl bg-gradient-to-br from-gray-50 to-white p-5 shadow-card">
               <p className="text-xs font-medium text-gray-500">总活动数</p>
               <p className="mt-1.5 text-h2 font-bold tabular-nums text-gray-900">{reportData.total}</p>
             </div>
             
-            <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
               <p className="text-xs font-medium text-gray-500">活跃应用</p>
               <p className="mt-1.5 text-lg font-semibold tabular-nums text-gray-900">{reportData.apps.length}</p>
             </div>
             
-            <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
               <p className="text-xs font-medium text-gray-500">主要类型</p>
               <div className="mt-1.5 flex items-center gap-2">
                 {reportData.categories[0] && (
@@ -189,7 +199,7 @@ export function ReportView({ activities }: ReportViewProps) {
           </section>
 
           {/* P1优化: 分类饼图（用条形图替代）- 左侧色条强调 */}
-          <section className="border-l-4 border-l-brand-500 bg-white rounded-r-xl p-4 shadow-sm">
+          <section className="border-l-4 border-l-brand-500 bg-white rounded-r-xl p-4 shadow-card">
             <h2 className="text-h3 font-semibold text-gray-900 mb-3">分类分布</h2>
             
             {/* 分布条 */}
@@ -224,51 +234,44 @@ export function ReportView({ activities }: ReportViewProps) {
             </div>
           </section>
 
-          {/* P1优化: 时间热力图 - 轻量容器 */}
+            {/* P1优化: 时间热力图 - 轻量容器 */}
           <section className="rounded-lg bg-white/80 backdrop-blur-sm p-4 border border-gray-100">
             <h2 className="text-h3 font-semibold text-gray-900 mb-3">时间分布</h2>
-            
-            <div className="flex items-end gap-0.5 h-20">
+
+            <div className="flex items-end gap-0.5 h-20 overflow-hidden">
               {reportData.hourly.map((count, i) => {
                 const hasActivity = count > 0
-                const hourActivity = dayActivitiesForHour(activities, reportDate, i)
-                
+                const dominantCat = reportData.hourlyDominant[i]
+                const maxCount = Math.max(...reportData.hourly, 1)
+                // 对数缩放（与今日时间轴一致），避免高峰柱溢出容器
+                const ratio = Math.log(count + 1) / Math.log(maxCount + 1)
+
                 return (
                   <div
                     key={i}
                     title={`${i.toString().padStart(2, '0')}:00 — ${count}条`}
                     className={`flex-1 min-w-[6px] rounded-t transition-opacity ${
-                      hasActivity ? 'opacity-100' : 'opacity-20 bg-gray-100'
+                      hasActivity ? 'opacity-100 hover:opacity-75' : 'opacity-20 bg-gray-100'
                     }`}
                     style={{
-                      height: `${Math.max(count * 8, hasActivity ? 4 : 0)}px`,
-                      backgroundColor: hasActivity && hourActivity 
-                        ? categoryVisual(hourActivity.category).hex 
-                        : undefined,
+                      height: `${Math.max(ratio * 100, hasActivity ? 3 : 0)}%`,
+                      backgroundColor: dominantCat ? categoryVisual(dominantCat).hex : undefined,
                     }}
                   />
                 )
               })}
             </div>
 
-            <div className="mt-2 flex justify-between text-[10px] text-gray-400">
-              <span>00:00</span>
-              <span>06:00</span>
-              <span>12:00</span>
-              <span>18:00</span>
-              <span>24:00</span>
+            <div className="mt-2 flex justify-between text-[10px] tabular-nums text-gray-400">
+              <span className="whitespace-nowrap">00:00</span>
+              <span className="whitespace-nowrap">06:00</span>
+              <span className="whitespace-nowrap">12:00</span>
+              <span className="whitespace-nowrap">18:00</span>
+              <span className="whitespace-nowrap">24:00</span>
             </div>
           </section>
         </>
       )}
     </div>
   )
-}
-
-/* 辅助函数：获取某小时的活动（用于颜色映射） */
-function dayActivitiesForHour(activities: Activity[], date: string, hour: number): Activity | undefined {
-  return activities.find(a => {
-    const d = new Date(a.timestamp)
-    return a.timestamp.startsWith(date) && d.getHours() === hour
-  })
 }

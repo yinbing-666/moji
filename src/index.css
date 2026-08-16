@@ -40,12 +40,25 @@ html {
     'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
   background-color: #f8fafc;
   color: #111827;
+}
+
+/* 品牌色文本选区，弱化默认浏览器蓝 */
+::selection {
+  background-color: #99f6e4;
+  color: #134e4a;
+}
+
+/* 键盘导航焦点环（仅 focus-visible，不打扰鼠标点击） */
+:focus-visible {
+  outline: 2px solid rgb(20 184 166 / 0.55);
+  outline-offset: 2px;
 }
 
 /* P0优化: 删除animate-rise-in和animate-breathe动画 */

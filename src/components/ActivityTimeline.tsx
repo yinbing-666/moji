@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Activity } from '../stores/activityStore'
+import { useActivityStore, type Activity } from '../stores/activityStore'
 import { categoryVisual } from '../utils/categoryStyles'
 import { ScreenshotModal } from './ScreenshotModal'
 
@@ -8,9 +8,21 @@ interface ActivityTimelineProps {
 }
 
 export function ActivityTimeline({ activities }: ActivityTimelineProps) {
+  const { updateActivity, removeActivity } = useActivityStore()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [previewBase64, setPreviewBase64] = useState<string | null>(null)
+
+  const handleSaveEdit = (id: string) => {
+    updateActivity(id, { description: editText.trim() })
+    setEditingId(null)
+  }
+
+  const handleRemove = (id: string) => {
+    if (window.confirm('确定删除这条活动记录？')) {
+      removeActivity(id)
+    }
+  }
 
   /* P1优化: 时间轴容器 - 删除入场动画 */
   return (
@@ -33,10 +45,10 @@ export function ActivityTimeline({ activities }: ActivityTimelineProps) {
         return (
           <article
             key={activity.id}
-            className={`group relative rounded-lg border bg-white transition-shadow hover:shadow-md ${
+            className={`group relative rounded-xl border bg-white transition-shadow hover:shadow-elevated ${
               isEditing 
                 ? 'border-brand-300 ring-1 ring-brand-100' 
-                : 'border-gray-200/60'
+                : 'border-gray-200/60 shadow-card'
             }`}
           >
             {/* P1优化: 左侧色条强调分类 */}
@@ -77,6 +89,10 @@ export function ActivityTimeline({ activities }: ActivityTimelineProps) {
                         <textarea
                           value={editText}
                           onChange={(e) => setEditText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') setEditingId(null)
+                            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSaveEdit(activity.id)
+                          }}
                           rows={3}
                           className="w-full rounded-md border border-brand-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
                           placeholder="编辑活动描述..."
@@ -85,11 +101,9 @@ export function ActivityTimeline({ activities }: ActivityTimelineProps) {
                         <div className="mt-2 flex gap-2">
                           <button
                             type="button"
-                            onClick={() => {
-                              // 触发保存逻辑（由父组件处理）
-                              setEditingId(null)
-                            }}
-                            className="rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700"
+                            onClick={() => handleSaveEdit(activity.id)}
+                            disabled={!editText.trim()}
+                            className="rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             保存
                           </button>
@@ -140,7 +154,7 @@ export function ActivityTimeline({ activities }: ActivityTimelineProps) {
 
                     <button
                       type="button"
-                      // onClick 触发删除逻辑（由父组件处理）
+                      onClick={() => handleRemove(activity.id)}
                       className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:bg-red-50 hover:text-red-600"
                       title="删除记录"
                     >

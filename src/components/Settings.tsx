@@ -237,9 +237,24 @@ export function Settings() {
                 type="url"
                 value={localSettings.baseUrl}
                 onChange={e => updateField('baseUrl', e.target.value)}
-                placeholder="https://api.example.com/v1"
+                placeholder="https://api.deepseek.com/v1"
                 className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
               />
+            </div>
+
+            <div>
+              <label htmlFor="text-model" className="block text-sm font-medium text-gray-700 mb-1">
+                模型名称
+              </label>
+              <input
+                id="text-model"
+                type="text"
+                value={localSettings.textModel}
+                onChange={e => updateField('textModel', e.target.value)}
+                placeholder="deepseek-chat"
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+              />
+              <p className="mt-1 text-xs text-gray-400">任何兼容 OpenAI 接口的纯文本对话模型均可</p>
             </div>
 
             {/* 连接测试按钮 + 结果显示 */}
