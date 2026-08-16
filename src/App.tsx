@@ -192,20 +192,20 @@ function AppShell() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* 侧边栏：墨色（呼应品牌），导航 + 采集控制常驻 */}
-      <aside className="flex w-60 shrink-0 flex-col bg-zinc-900 text-zinc-300">
-        {/* Logo 区 */}
+      {/* 侧边栏：浅色一体化（Notion 式），细边框与内容区分隔，导航 + 采集控制常驻 */}
+      <aside className="flex w-60 shrink-0 flex-col border-r border-gray-200 bg-zinc-50">
+        {/* Logo 区：墨色方块做品牌锚点 */}
         <div className="flex items-center gap-3 px-5 pb-5 pt-6">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-base font-bold text-zinc-900">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-900 text-base font-bold text-white">
             墨
           </div>
           <div>
-            <p className="text-sm font-bold tracking-wide text-white">墨记</p>
-            <p className="text-2xs text-zinc-500">记录工作痕迹</p>
+            <p className="text-sm font-bold tracking-wide text-gray-900">墨记</p>
+            <p className="text-2xs text-gray-400">记录工作痕迹</p>
           </div>
         </div>
 
-        {/* 导航 */}
+        {/* 导航：白底凸起表示选中（Notion 风） */}
         <nav className="flex-1 space-y-1 px-3">
           {NAV_ITEMS.map(item => (
             <button
@@ -215,30 +215,29 @@ function AppShell() {
               aria-current={page === item.page ? 'page' : undefined}
               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 page === item.page
-                  ? 'bg-white/10 text-white'
-                  : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                  ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200/80'
+                  : 'text-gray-500 hover:bg-gray-200/60 hover:text-gray-700'
               }`}
             >
-              <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <svg className={`h-4 w-4 shrink-0 ${page === item.page ? 'text-brand-600' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 {item.iconPath.split('|').map((d, i) => (
                   <path key={i} strokeLinecap="round" strokeLinejoin="round" d={d} />
                 ))}
               </svg>
               {item.label}
-              {page === item.page && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-brand-400" />}
             </button>
           ))}
         </nav>
 
         {/* 底部：采集状态 + 主控开关 */}
-        <div className="space-y-3 border-t border-white/10 px-4 pb-5 pt-4">
+        <div className="space-y-3 border-t border-gray-200 px-4 pb-5 pt-4">
           <div className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-2">
-              <span className={`h-2 w-2 rounded-full ${statusActive ? 'bg-brand-400 animate-pulse-dot' : 'bg-zinc-600'}`} />
-              <span className={statusActive ? 'text-zinc-200' : 'text-zinc-500'}>{statusLabel}</span>
+              <span className={`h-2 w-2 rounded-full ${statusActive ? 'bg-brand-500 animate-pulse-dot' : 'bg-gray-300'}`} />
+              <span className={statusActive ? 'text-gray-700' : 'text-gray-400'}>{statusLabel}</span>
             </span>
             {(awEnabled || windowTextEnabled) && (
-              <span className="rounded bg-white/5 px-1.5 py-0.5 text-2xs text-zinc-500">
+              <span className="rounded bg-gray-200/80 px-1.5 py-0.5 text-2xs text-gray-500">
                 {awEnabled && windowTextEnabled ? '双源' : awEnabled ? 'AW' : '文本'}
               </span>
             )}
@@ -250,8 +249,8 @@ function AppShell() {
             disabled={!windowTextEnabled ? false : !isRunning && !isConfigured}
             className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               isRunning
-                ? 'bg-white/10 text-zinc-200 hover:bg-white/15'
-                : 'bg-brand-500 text-white hover:bg-brand-400'
+                ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                : 'bg-brand-600 text-white hover:bg-brand-700'
             }`}
           >
             {windowTextEnabled ? (isRunning ? '停止采集' : '开始采集') : '立即同步'}
@@ -262,7 +261,7 @@ function AppShell() {
               type="button"
               onClick={() => void captureNow()}
               disabled={!isConfigured || isCapturing || isAnalyzing}
-              className="w-full rounded-lg px-4 py-1.5 text-xs text-zinc-500 transition-colors hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
+              className="w-full rounded-lg px-4 py-1.5 text-xs text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isCapturing || isAnalyzing ? '处理中…' : '立即采集一次'}
             </button>
