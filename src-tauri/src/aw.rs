@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use windows::Win32::System::Time::GetTimeZoneInformation;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AwEvent {
@@ -12,6 +13,16 @@ pub struct AwSyncResult {
     pub bucket_id: String,
     pub events: Vec<AwEvent>,
     pub fetched_at: String,
+}
+
+/// 返回本地时区相对 UTC 的偏移分钟数（东八区返回 480）
+fn local_offset_minutes() -> i32 {
+    unsafe {
+        let mut tz = std::mem::zeroed();
+        GetTimeZoneInformation(&mut tz);
+        // Bias 是 UTC=本地 + Bias，即本地 = UTC - Bias，偏移 = -Bias
+        -tz.Bias
+    }
 }
 
 /// 拉取 ActivityWatch 的 window bucket 事件。
@@ -137,22 +148,24 @@ fn urlencode(s: &str) -> String {
 }
 
 fn chrono_now_iso() -> String {
-    // 不用额外依赖 chrono，用系统时间格式化近似 ISO
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
     let secs = now.as_secs();
     let millis = now.subsec_millis();
-    // UTC+8 近似（本机时区）
-    let local = secs + 8 * 3600;
-    let days = local / 86400;
-    let rem = local % 86400;
+    let offset_min = local_offset_minutes();
+    let local_secs = (secs as i64) + (offset_min as i64) * 60;
+    let local_secs = if local_secs >= 0 { local_secs as u64 } else { 0 };
+    let days = local_secs / 86400;
+    let rem = local_secs % 86400;
     let (h, m, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
-    // 简单年/月/日计算（从 1970-01-01）
     let (y, mo, d) = civil_from_days(days as i64);
+    let offset_h = offset_min.abs() / 60;
+    let offset_m = offset_min.abs() % 60;
+    let sign = if offset_min >= 0 { '+' } else { '-' };
     format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
-        y, mo, d, h, m, s, millis
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}{}{:02}:{:02}",
+        y, mo, d, h, m, s, millis, sign, offset_h, offset_m
     )
 }
 

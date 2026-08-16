@@ -2,7 +2,7 @@
 //!
 //! 为什么：浏览器里的 fetch 受 CORS 限制，遇到没配 Access-Control-Allow-Origin
 //! 的 API 网关（如自建中转）会报 "fail to fetch"。reqwest 在服务端发起请求，
-//! 不受 CORS 约束，同时 API Key 不再暴露在 WebView 的 JS 上下文里。
+//! 不受 CORS 约束，请求经 Rust 端发出不经浏览器网络层。API Key 仍以明文存于本机 localStorage。
 
 use serde::Deserialize;
 

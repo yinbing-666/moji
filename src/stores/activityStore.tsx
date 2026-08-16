@@ -13,7 +13,7 @@ import {
   dbFetchAwEvents,
   isSqliteAvailable,
 } from '../utils/db'
-import { loadReportHistory, removeReportHistoryItem, type ReportHistoryItem } from '../utils/reportHistory'
+import { loadReportHistory, removeReportHistoryItem, mergeReportHistoryFromSqlite, type ReportHistoryItem } from '../utils/reportHistory'
 import { dateStamp } from '../utils/export'
 
 export type BackgroundPreset = 'plain' | 'mint' | 'sky' | 'graphite' | 'custom'
@@ -306,6 +306,25 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   // activities 单条可能几百 KB（含缩略图），debounce 500ms 写盘，避免每次 addActivity 都同步 stringify+落盘卡顿
   const activitiesRef = useRef(activities)
   const saveTimerRef = useRef<number | null>(null)
+  // localStorage 写满降级标记：超配额后停止再写（仅 SQLite 持久化），清空数据时恢复尝试
+  const quotaExceededRef = useRef(false)
+
+  /**
+   * localStorage 持久化：剥离 base64 缩略图（单条可达数百 KB，极易超 5MB 配额），
+   * 缩略图仅存 SQLite，localStorage 保留元数据；启动时 SQLite 数据（含缩略图）会覆盖恢复。
+   * 写入抛错（QuotaExceededError 等）时静默降级为仅 SQLite 持久化，不再每次变更重试写满。
+   */
+  const persistActivities = useCallback((list: Activity[]) => {
+    if (quotaExceededRef.current && list.length > 0) return
+    try {
+      const serializable = list.map(a => (a.screenshotBase64 ? { ...a, screenshotBase64: undefined } : a))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable))
+      quotaExceededRef.current = false
+    } catch (err) {
+      quotaExceededRef.current = true
+      console.warn('活动数据写 localStorage 失败（可能超出配额），已降级为仅 SQLite 持久化:', err)
+    }
+  }, [])
 
   useEffect(() => {
     activitiesRef.current = activities
@@ -313,20 +332,20 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(saveTimerRef.current)
     }
     saveTimerRef.current = window.setTimeout(() => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(activitiesRef.current))
+      persistActivities(activitiesRef.current)
       saveTimerRef.current = null
     }, 500)
-  }, [activities])
+  }, [activities, persistActivities])
 
   // 卸载时 flush 最后一次待写数据，避免丢记录
   useEffect(() => {
     return () => {
       if (saveTimerRef.current !== null) {
         window.clearTimeout(saveTimerRef.current)
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(activitiesRef.current))
+        persistActivities(activitiesRef.current)
       }
     }
-  }, [])
+  }, [persistActivities])
 
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
@@ -370,6 +389,16 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
         }
       } catch {
         sqliteReadyRef.current = false
+      }
+      // 报告历史：SQLite 是权威源，启动时回读合并到 localStorage（清浏览器数据后可恢复）
+      try {
+        const { dbLoadReportHistory } = await import('../utils/db')
+        const rows = await dbLoadReportHistory()
+        if (!cancelled && rows && rows.length > 0) {
+          setReportHistory(mergeReportHistoryFromSqlite(rows))
+        }
+      } catch {
+        // 回读失败不影响其余功能，localStorage 仍是兜底
       }
     })()
     return () => { cancelled = true }

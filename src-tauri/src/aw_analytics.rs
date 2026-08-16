@@ -54,8 +54,17 @@ pub struct AwAnalyticsResult {
     pub report_html: String,
 }
 
-/// 定位脚本目录:CARGO_MANIFEST_DIR = src-tauri,脚本在 ../tools/activitywatch-analytics
-fn script_dir() -> Result<PathBuf, String> {
+/// 定位脚本目录。
+/// 发布版:优先用安装包资源目录(bundle.resources 已把 tools/activitywatch-analytics
+/// 的 scripts/ 和 assets/ 打进安装包,编译期常量 CARGO_MANIFEST_DIR 在用户机器上不存在);
+/// dev 模式:资源目录里没有该脚本,回退源码目录(CARGO_MANIFEST_DIR = src-tauri,脚本在 ../tools)。
+fn script_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        let dir = resource_dir.join("tools/activitywatch-analytics");
+        if dir.join("scripts/activitywatch_analytics.py").exists() {
+            return Ok(dir);
+        }
+    }
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let dir = manifest
         .parent()
@@ -77,7 +86,7 @@ pub async fn run_aw_analytics(
     app_handle: tauri::AppHandle,
     period: String,
 ) -> Result<AwAnalyticsResult, String> {
-    let dir = script_dir()?;
+    let dir = script_dir(&app_handle)?;
     let script = dir.join("scripts/activitywatch_analytics.py");
 
     let app_data_dir = app_handle
