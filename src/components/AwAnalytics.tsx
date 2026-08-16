@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useActivityStore } from '../stores/activityStore'
 import { runAwAnalytics, openAwReport, dbAwHealth, launchActivitywatch, type AwAnalyticsResult } from '../utils/db'
 
 const LEVEL_LABEL: Record<string, string> = {
@@ -34,11 +35,14 @@ function fmtDuration(seconds: number): string {
 
 /** AW 效率分析(基于 ActivityWatch Analytics Skill,任何数据源模式可用) */
 export function AwAnalytics() {
+  const { settings } = useActivityStore()
   const [period, setPeriod] = useState('today')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<AwAnalyticsResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [awOnline, setAwOnline] = useState<boolean | null>(null)
+  // 纯窗口文本模式默认收起（多数用户未安装 AW，避免警告横幅造成噪音）；AW/双源模式默认展开
+  const [expanded, setExpanded] = useState(settings.dataSource !== 'window_text')
 
   // 检测 ActivityWatch 是否在运行
   useEffect(() => {
@@ -85,17 +89,34 @@ export function AwAnalytics() {
   }, [period])
 
   return (
-    <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
+    <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        aria-expanded={expanded}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
         <div>
           <h2 className="text-h3 font-semibold text-gray-900">效率分析</h2>
           <p className="mt-0.5 text-xs text-gray-500">基于 ActivityWatch 数据离线计算（本地 Python，隐私聚合）</p>
         </div>
-        <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700 ring-1 ring-teal-200">
-          Pulse 效率评分
-        </span>
-      </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="hidden rounded-full bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700 ring-1 ring-teal-200 sm:inline-flex">
+            Pulse 效率评分
+          </span>
+          <svg
+            className={`h-4 w-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
 
+      {expanded && (<>
       {awOnline === false && (
         <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
           <p className="text-xs text-amber-800">
@@ -218,6 +239,7 @@ export function AwAnalytics() {
           </div>
         </div>
       )}
+      </>)}
     </section>
   )
 }

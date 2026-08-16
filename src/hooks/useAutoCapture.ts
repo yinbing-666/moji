@@ -114,12 +114,8 @@ export function useAutoCapture() {
     if (analyzingRef.current) return
 
     if (!settings.apiKey.trim()) {
-      addActivity({
-        category: 'other',
-        app: '墨记',
-        title: '配置缺失',
-        description: '未配置 API Key，本次采集已跳过分析。',
-      })
+      // 配置缺失是系统状态，不写入活动数据流（避免污染时间轴和统计），只记录日志
+      console.warn('墨记：未配置 API Key，本轮采集已跳过 AI 分析')
       return
     }
 

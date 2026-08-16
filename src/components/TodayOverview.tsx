@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { Activity } from '../stores/activityStore'
 import { categoryVisual } from '../utils/categoryStyles'
+import { formatDuration } from '../utils/format'
 
 function isToday(iso: string) {
   return new Date(iso).toDateString() === new Date().toDateString()
@@ -44,7 +45,10 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
       if (count > topCatCount) { topCat = cat as Activity['category']; topCatCount = count }
     }
 
-    return { todayCount, yesterdayCount, topApp, topAppCount, topCat, topCatCount }
+    // 今日记录的总时长（有 durationSeconds 的记录求和；AW 源为事件时长，UIA 源为累计停留）
+    const totalSeconds = todayActivities.reduce((sum, a) => sum + (a.durationSeconds ?? 0), 0)
+
+    return { todayCount, yesterdayCount, topApp, topAppCount, topCat, topCatCount, totalSeconds }
   }, [todayActivities])
 
   /* P1优化: 时间轴数据 - 按小时聚合（同时统计每小时的主要分类，避免渲染时反复查找） */
@@ -77,6 +81,7 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
   }, [todayActivities])
 
   const topCatVisual = categoryVisual(stats.topCat)
+  const totalDurationText = formatDuration(stats.totalSeconds)
 
   /* P1优化: 统计卡片 - 使用大圆角+渐变背景（层级1） */
   return (
@@ -94,7 +99,7 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
             {stats.todayCount}
           </p>
           <p className="mt-1 text-xs text-gray-400">
-            较昨日 <span className={stats.yesterdayCount > 0 ? 'text-teal-600' : 'text-gray-600'}>{stats.yesterdayCount}</span>
+            {totalDurationText ? `约 ${totalDurationText} · ` : ''}较昨日 <span className={stats.yesterdayCount > 0 ? 'text-teal-600' : 'text-gray-600'}>{stats.yesterdayCount}</span>
           </p>
         </div>
 

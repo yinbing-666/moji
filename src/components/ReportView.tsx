@@ -2,18 +2,51 @@ import { useMemo, useState } from 'react'
 import type { Activity } from '../stores/activityStore'
 import { useActivityStore } from '../stores/activityStore'
 import { categoryVisual } from '../utils/categoryStyles'
+import { exportReportAsMarkdown } from '../utils/export'
+import { formatDuration } from '../utils/format'
 import { AwAnalytics } from './AwAnalytics'
+
+const REPORT_TYPE_LABEL: Record<string, string> = {
+  daily: '日报',
+  weekly: '周报',
+  monthly: '月报',
+}
 
 interface ReportViewProps {
   activities: Activity[]
 }
 
 export function ReportView({ activities }: ReportViewProps) {
-  const { isGeneratingReport, generateDailyReport } = useActivityStore()
+  const {
+    isGeneratingReport,
+    generateDailyReport,
+    lastReport,
+    reportHistory,
+    viewReport,
+    deleteReport,
+  } = useActivityStore()
+  const [copied, setCopied] = useState(false)
   const [reportDate, setReportDate] = useState(() => {
     const now = new Date()
     return now.toISOString().slice(0, 10)
   })
+
+  const handleCopyReport = async () => {
+    if (!lastReport) return
+    try {
+      await navigator.clipboard.writeText(lastReport.content)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('复制失败:', err)
+    }
+  }
+
+  const handleDownloadReport = () => {
+    if (!lastReport) return
+    const label = `${REPORT_TYPE_LABEL[lastReport.type] ?? '报告'}-${lastReport.createdAt.slice(0, 10)}`
+    exportReportAsMarkdown(lastReport.content, label)
+  }
 
   /* P1优化: 报告数据聚合 */
   const reportData = useMemo(() => {
@@ -23,11 +56,12 @@ export function ReportView({ activities }: ReportViewProps) {
       return null
     }
 
-    // 按应用统计
+    // 按应用统计（含时长聚合）
     const appMap = new Map<string, { count: number; duration: number; categories: Set<Activity['category']> }>()
     for (const a of dayActivities) {
       const existing = appMap.get(a.app) || { count: 0, duration: 0, categories: new Set() }
       existing.count++
+      existing.duration += a.durationSeconds ?? 0
       existing.categories.add(a.category)
       appMap.set(a.app, existing)
     }
@@ -111,6 +145,94 @@ export function ReportView({ activities }: ReportViewProps) {
         </div>
       </section>
 
+      {/* 报告内容展示：生成后或从历史打开 */}
+      {lastReport && (
+        <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
+                {REPORT_TYPE_LABEL[lastReport.type] ?? lastReport.type}
+              </span>
+              <p className="text-sm font-semibold text-gray-900">
+                生成于 {new Date(lastReport.createdAt).toLocaleString('zh-CN', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleCopyReport()}
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+              >
+                {copied ? '已复制' : '复制'}
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadReport}
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+              >
+                下载 Markdown
+              </button>
+            </div>
+          </div>
+          <div className="max-h-[28rem] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+            {lastReport.content}
+          </div>
+        </section>
+      )}
+
+      {/* 报告历史：最近生成的报告可随时回看 */}
+      {reportHistory.length > 0 && (
+        <section className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-h3 font-semibold text-gray-900">报告历史</h2>
+            <span className="text-xs text-gray-400">最近 {reportHistory.length} 条</span>
+          </div>
+          <ul className="divide-y divide-gray-100">
+            {reportHistory.map(item => (
+              <li
+                key={item.id}
+                className={`group flex items-center gap-3 py-2.5 transition-colors ${
+                  lastReport?.id === item.id ? 'bg-brand-50/30' : 'hover:bg-gray-50/60'
+                } -mx-2 rounded-md px-2`}
+              >
+                <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                  {REPORT_TYPE_LABEL[item.type] ?? item.type}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => viewReport(item)}
+                  className="min-w-0 flex-1 text-left"
+                  title="查看这份报告"
+                >
+                  <p className="truncate text-sm text-gray-800">{item.content.split('\n')[0] || '（无内容）'}</p>
+                  <p className="mt-0.5 text-xs text-gray-400">
+                    {new Date(item.createdAt).toLocaleString('zh-CN', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteReport(item.id)}
+                  className="shrink-0 rounded-md px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                  title="删除这条报告"
+                >
+                  删除
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {!reportData ? (
         /* P1优化: 无数据提示 - 使用左侧色条风格 */
         <section className="border-l-4 border-l-gray-300 bg-white rounded-r-xl p-6 shadow-card text-center">
@@ -163,6 +285,7 @@ export function ReportView({ activities }: ReportViewProps) {
                     <th className="pb-2 text-left text-xs font-medium text-gray-500">#</th>
                     <th className="pb-2 text-left text-xs font-medium text-gray-500">应用</th>
                     <th className="pb-2 text-right text-xs font-medium text-gray-500">次数</th>
+                    <th className="pb-2 text-right text-xs font-medium text-gray-500">时长</th>
                     <th className="pb-2 text-left text-xs font-medium text-gray-500 pl-4">分类</th>
                   </tr>
                 </thead>
@@ -172,6 +295,7 @@ export function ReportView({ activities }: ReportViewProps) {
                       <td className="py-2.5 tabular-nums text-gray-400">{i + 1}</td>
                       <td className="py-2.5 font-medium text-gray-900">{app.app}</td>
                       <td className="py-2.5 text-right tabular-nums text-gray-700">{app.count}</td>
+                      <td className="py-2.5 text-right tabular-nums text-gray-700">{formatDuration(app.duration) ?? '-'}</td>
                       <td className="py-2.5 pl-4">
                         <div className="flex flex-wrap gap-1">
                           {app.categories.map(cat => {

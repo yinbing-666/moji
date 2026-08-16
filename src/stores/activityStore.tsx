@@ -13,6 +13,7 @@ import {
   dbFetchAwEvents,
   isSqliteAvailable,
 } from '../utils/db'
+import { loadReportHistory, removeReportHistoryItem, type ReportHistoryItem } from '../utils/reportHistory'
 
 export type BackgroundPreset = 'plain' | 'mint' | 'sky' | 'graphite' | 'custom'
 
@@ -30,6 +31,8 @@ export interface Activity {
   title: string
   description: string
   screenshotBase64?: string
+  /** 该活动的持续秒数（AW 源为事件时长；UIA 源按连续采集周期累计），无值表示未知 */
+  durationSeconds?: number
 }
 
 /* DataSource 类型：窗口文本识别（UIA）、ActivityWatch、或双源并行（both） */
@@ -73,6 +76,14 @@ interface ActivityStore {
   /* P1优化: 新增报告生成相关方法 */
   generateDailyReport: (date: string) => Promise<void>
   isGeneratingReport: boolean
+  /** 最近生成/查看的报告（界面展示用） */
+  lastReport: import('../utils/reportHistory').ReportHistoryItem | null
+  /** 最近 20 条报告历史 */
+  reportHistory: import('../utils/reportHistory').ReportHistoryItem[]
+  /** 从历史中打开一份报告查看 */
+  viewReport: (item: import('../utils/reportHistory').ReportHistoryItem) => void
+  /** 删除一条报告历史 */
+  deleteReport: (id: string) => void
   connectionTestResult: { ok: boolean; message: string } | null
   testAiConnection: () => Promise<void>
   /* P1优化: 新增数据导入导出方法 */
@@ -148,6 +159,7 @@ export function awEventToActivity(event: {
     app,
     title,
     description: title ? `${title}${durationText}` : `${app}${durationText}`,
+    durationSeconds: Math.round(event.duration),
   }
 }
 
@@ -170,6 +182,9 @@ function normalizeActivity(value: unknown): Activity | null {
   const screenshotBase64 = typeof item.screenshotBase64 === 'string' && item.screenshotBase64.trim()
     ? item.screenshotBase64
     : undefined
+  const durationSeconds = typeof item.durationSeconds === 'number' && Number.isFinite(item.durationSeconds) && item.durationSeconds > 0
+    ? Math.round(item.durationSeconds)
+    : undefined
 
   return {
     id: typeof item.id === 'string' && item.id.trim() ? item.id : createActivityId(),
@@ -179,6 +194,7 @@ function normalizeActivity(value: unknown): Activity | null {
     title: normalizeString(item.title),
     description: normalizeString(item.description, '无描述').trim() || '无描述',
     ...(screenshotBase64 ? { screenshotBase64 } : {}),
+    ...(durationSeconds !== undefined ? { durationSeconds } : {}),
   }
 }
 
@@ -283,6 +299,8 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   /* P1优化: 报告生成状态 */
   const [isGeneratingReport, setIsGeneratingReport] = useState(false)
   const [connectionTestResult, setConnectionTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [lastReport, setLastReport] = useState<ReportHistoryItem | null>(null)
+  const [reportHistory, setReportHistory] = useState<ReportHistoryItem[]>(() => loadReportHistory())
 
   // activities 单条可能几百 KB（含缩略图），debounce 500ms 写盘，避免每次 addActivity 都同步 stringify+落盘卡顿
   const activitiesRef = useRef(activities)
@@ -337,6 +355,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
             title: a.title ?? '',
             description: a.description,
             screenshotBase64: a.screenshot_base64 ?? undefined,
+            durationSeconds: a.duration_seconds ?? undefined,
           })).filter((a): a is Activity => a !== null)
           setActivities(mapped)
         } else {
@@ -360,24 +379,43 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     void dbSaveActivity(activity).catch(() => {})
   }, [sqliteReady])
 
+  const updateActivity = useCallback((id: string, partial: Partial<Omit<Activity, 'id' | 'timestamp'>>) => {
+    setActivities(prev => {
+      const next = prev.map(activity =>
+        activity.id === id ? { ...activity, ...partial } : activity,
+      )
+      const updated = next.find(a => a.id === id)
+      if (updated) saveToSqlite(updated)
+      return next
+    })
+  }, [saveToSqlite])
+
   const addActivity = useCallback((activity: Omit<Activity, 'id' | 'timestamp'>) => {
     const newActivity: Activity = {
       ...activity,
       id: createActivityId(),
       timestamp: new Date().toISOString(),
     }
-    // 双源并行去重：同 app+title 且在 90 秒内出现过的记录跳过，
-    // 避免 ActivityWatch 与窗口文本采集同时写入重复条目
+    // 双源并行去重：同 app+title 且在 90 秒内出现过的记录不重复新增。
+    // UIA 采集（无 durationSeconds）命中去重时，视为同一活动持续了一个采集周期，
+    // 把间隔累加到已有记录的时长上，让时间轴能反映真实停留时间。
     const ts = Date.parse(newActivity.timestamp)
-    const isDuplicate = activitiesRef.current.some(a =>
+    const duplicate = activitiesRef.current.find(a =>
       a.app === newActivity.app
       && a.title === newActivity.title
       && Math.abs(Date.parse(a.timestamp) - ts) < 90_000
     )
-    if (isDuplicate) return
+    if (duplicate) {
+      if (newActivity.durationSeconds === undefined) {
+        updateActivity(duplicate.id, {
+          durationSeconds: (duplicate.durationSeconds ?? 0) + Math.max(60, settings.intervalSeconds),
+        })
+      }
+      return
+    }
     setActivities(prev => [newActivity, ...prev])
     saveToSqlite(newActivity)
-  }, [saveToSqlite])
+  }, [saveToSqlite, settings.intervalSeconds, updateActivity])
 
   const importActivity = useCallback((activity: Activity): boolean => {
     const normalized = normalizeActivity(activity)
@@ -390,17 +428,6 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     })
     saveToSqlite(normalized)
     return true
-  }, [saveToSqlite])
-
-  const updateActivity = useCallback((id: string, partial: Partial<Omit<Activity, 'id' | 'timestamp'>>) => {
-    setActivities(prev => {
-      const next = prev.map(activity =>
-        activity.id === id ? { ...activity, ...partial } : activity,
-      )
-      const updated = next.find(a => a.id === id)
-      if (updated) saveToSqlite(updated)
-      return next
-    })
   }, [saveToSqlite])
 
   const removeActivity = useCallback((id: string) => {
@@ -425,6 +452,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       title: a.title ?? '',
       description: a.description,
       screenshotBase64: a.screenshot_base64 ?? undefined,
+      durationSeconds: a.duration_seconds ?? undefined,
     })).filter((a): a is Activity => a !== null)
     setActivities(mapped)
     return mapped.length
@@ -531,18 +559,27 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
         settings.textModel,
       )
 
-      // 保存到历史记录
-      const { addReportHistoryItem, loadReportHistory } = await import('../utils/reportHistory')
-      const history = loadReportHistory()
-      addReportHistoryItem(history, 'daily', reportContent, 'standard')
-
-      // 可选：自动下载
-      const { exportReportAsMarkdown } = await import('../utils/export')
-      exportReportAsMarkdown(reportContent, `日报-${date}`)
+      // 保存到历史记录并展示在界面上（下载改为手动触发，不再自动弹下载框）
+      const { addReportHistoryItem } = await import('../utils/reportHistory')
+      const nextHistory = addReportHistoryItem(loadReportHistory(), 'daily', reportContent, 'standard')
+      setReportHistory(nextHistory)
+      setLastReport(nextHistory[0] ?? null)
     } finally {
       setIsGeneratingReport(false)
     }
-  }, [activities, settings.apiKey, settings.baseUrl, settings.textModel])
+  }, [settings.apiKey, settings.baseUrl, settings.textModel])
+
+  const viewReport = useCallback((item: ReportHistoryItem) => {
+    setLastReport(item)
+  }, [])
+
+  const deleteReport = useCallback((id: string) => {
+    setReportHistory(prev => {
+      const next = removeReportHistoryItem(prev, id)
+      setLastReport(cur => (cur?.id === id ? next[0] ?? null : cur))
+      return next
+    })
+  }, [])
 
   /* P1优化: 导入JSON数据 */
   const importActivitiesFromJson = useCallback(async (data: unknown): Promise<number> => {
@@ -588,6 +625,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       addActivity, importActivity, updateActivity, removeActivity, clearActivities,
       reloadFromSqlite, updateSettings: updateSettingsCallback, setIsAnalyzing, syncFromAw,
       generateDailyReport, isGeneratingReport, connectionTestResult,
+      lastReport, reportHistory, viewReport, deleteReport,
       testAiConnection: testAiConnectionCallback,
       importActivitiesFromJson, exportActivitiesAsJson: exportActivitiesAsJsonCallback,
       clearAllActivities,

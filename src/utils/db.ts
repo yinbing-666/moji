@@ -13,6 +13,7 @@ interface DbActivity {
   title: string | null
   description: string
   screenshot_base64: string | null
+  duration_seconds?: number | null
 }
 
 interface DbReportHistory {
@@ -74,6 +75,7 @@ export async function dbSaveActivity(activity: {
   title: string
   description: string
   screenshotBase64?: string
+  durationSeconds?: number
 }): Promise<boolean> {
   const result = await call('db_save_activity', {
     id: activity.id,
@@ -83,6 +85,7 @@ export async function dbSaveActivity(activity: {
     title: activity.title || null,
     description: activity.description,
     screenshotBase64: activity.screenshotBase64 || null,
+    durationSeconds: activity.durationSeconds ?? null,
   })
   return result !== null
 }

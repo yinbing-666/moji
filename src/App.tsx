@@ -11,8 +11,8 @@ function isToday(iso: string) {
   return new Date(iso).toDateString() === new Date().toDateString()
 }
 
-function Dashboard() {
-  const { activities, isAnalyzing, settings, syncFromAw } = useActivityStore()
+function Dashboard({ onGoSettings }: { onGoSettings: () => void }) {
+  const { activities, isAnalyzing, settings, syncFromAw, updateSettings } = useActivityStore()
   const { isRunning, isCapturing, latestScreenshot, error, start, stop, captureNow } = useAutoCapture()
   const [tab, setTab] = useState<'timeline' | 'report'>('timeline')
   const isConfigured = Boolean(settings.apiKey.trim() && settings.baseUrl.trim() && settings.textModel.trim())
@@ -123,14 +123,35 @@ function Dashboard() {
         </div>
       )}
 
-      {/* P1优化: 配置提示 - 删除动画 + emoji替换为文字 */}
+      {/* 配置引导：未配置 AI 时给出两条明确路径，而不是让用户对着禁用按钮发呆 */}
       {!isConfigured && windowTextEnabled && (
         <div className="mx-auto mt-4 max-w-4xl px-6">
-          <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            <svg className="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-            <span>开始采集前，请先在设置里配置 API Key、Base URL 和模型名称。</span>
+          <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start gap-2.5 min-w-0">
+              <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-amber-900">开始记录你的工作痕迹</p>
+                <p className="mt-0.5 text-xs text-amber-800">配置 AI 识别（窗口文本分析），或先用 ActivityWatch 同步桌面活动（无需 API Key）。</p>
+              </div>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={onGoSettings}
+                className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-700"
+              >
+                去配置 AI
+              </button>
+              <button
+                type="button"
+                onClick={() => updateSettings({ dataSource: 'aw' })}
+                className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
+              >
+                先试试 ActivityWatch
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -310,7 +331,7 @@ function AppShell() {
         </div>
       </nav>
 
-      {page === 'dashboard' ? <Dashboard /> : <SettingsPage />}
+      {page === 'dashboard' ? <Dashboard onGoSettings={() => setPage('settings')} /> : <SettingsPage />}
     </>
   )
 }

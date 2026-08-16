@@ -20,6 +20,9 @@ pub struct DbActivity {
     /// 前端旧版 localStorage 用 `screenshotBase64`，这里用 alias 兼容导入
     #[serde(alias = "screenshotBase64")]
     pub screenshot_base64: Option<String>,
+    /// 活动持续秒数（AW 事件时长 / UIA 连续采集周期累计），NULL 表示未知
+    #[serde(alias = "durationSeconds")]
+    pub duration_seconds: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -63,7 +66,8 @@ pub fn init_database(app_data_dir: &PathBuf) -> Result<Connection, String> {
             app_name TEXT NOT NULL,
             title TEXT,
             description TEXT NOT NULL,
-            screenshot_base64 TEXT
+            screenshot_base64 TEXT,
+            duration_seconds INTEGER
         );
         CREATE INDEX IF NOT EXISTS idx_activities_ts ON activities(timestamp DESC);
         CREATE TABLE IF NOT EXISTS report_history (
@@ -92,6 +96,11 @@ fn migrate_schema(conn: &Connection) -> Result<(), String> {
     if column_exists(conn, "report_history", "type")? && !column_exists(conn, "report_history", "report_type")? {
         conn.execute("ALTER TABLE report_history RENAME COLUMN type TO report_type", [])
             .map_err(|e| format!("迁移 report_history.type 失败: {e}"))?;
+    }
+    // v0.2：活动时长列（旧库补列，新库建表时已包含）
+    if !column_exists(conn, "activities", "duration_seconds")? {
+        conn.execute("ALTER TABLE activities ADD COLUMN duration_seconds INTEGER", [])
+            .map_err(|e| format!("迁移 activities.duration_seconds 失败: {e}"))?;
     }
     Ok(())
 }
@@ -122,6 +131,7 @@ fn row_to_activity(
         title: row.get("title")?,
         description: row.get("description")?,
         screenshot_base64: row.get("screenshot_base64")?,
+        duration_seconds: row.get("duration_seconds")?,
     })
 }
 
@@ -147,12 +157,13 @@ pub fn db_save_activity(
     title: Option<String>,
     description: String,
     screenshot_base64: Option<String>,
+    duration_seconds: Option<i64>,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
     conn.execute(
-        "INSERT OR REPLACE INTO activities (id, timestamp, category, app_name, title, description, screenshot_base64)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![id, timestamp, category, app_name, title, description, screenshot_base64],
+        "INSERT OR REPLACE INTO activities (id, timestamp, category, app_name, title, description, screenshot_base64, duration_seconds)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![id, timestamp, category, app_name, title, description, screenshot_base64, duration_seconds],
     )
     .map_err(|e| format!("Failed to save activity: {e}"))?;
     Ok(())
@@ -162,7 +173,7 @@ pub fn db_save_activity(
 pub fn db_load_activities(db: tauri::State<'_, Database>) -> Result<Vec<DbActivity>, String> {
     let conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
     let mut stmt = conn
-        .prepare("SELECT id, timestamp, category, app_name, title, description, screenshot_base64 FROM activities ORDER BY timestamp DESC")
+        .prepare("SELECT id, timestamp, category, app_name, title, description, screenshot_base64, duration_seconds FROM activities ORDER BY timestamp DESC")
         .map_err(|e| format!("Failed to prepare query: {e}"))?;
     let rows = stmt
         .query_map([], row_to_activity)
@@ -229,7 +240,7 @@ pub fn db_load_activities_paginated(
 
     // paginated query
     let query_sql = format!(
-        "SELECT id, timestamp, category, app_name, title, description, screenshot_base64
+        "SELECT id, timestamp, category, app_name, title, description, screenshot_base64, duration_seconds
          FROM activities {where_clause}
          ORDER BY timestamp DESC
          LIMIT ?{} OFFSET ?{}",
@@ -284,8 +295,8 @@ pub fn db_import_activities(
     let conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
     for item in &items {
         conn.execute(
-            "INSERT OR IGNORE INTO activities (id, timestamp, category, app_name, title, description, screenshot_base64)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT OR IGNORE INTO activities (id, timestamp, category, app_name, title, description, screenshot_base64, duration_seconds)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 item.id,
                 item.timestamp,
@@ -294,6 +305,7 @@ pub fn db_import_activities(
                 item.title,
                 item.description,
                 item.screenshot_base64,
+                item.duration_seconds,
             ],
         )
         .map_err(|e| format!("Failed to import activity: {e}"))?;
