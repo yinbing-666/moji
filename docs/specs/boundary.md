@@ -64,8 +64,8 @@
 ### AI 接口
 
 - 协议：OpenAI 兼容 `/chat/completions`。
-- 文本模型：`deepseek-chat`（已移除视觉模型，改 UIA 窗口文本识别）。
-- 默认 Base URL：`https://api.deepseek.com/v1`。
+- 文本模型：用户在设置中填写（已移除视觉模型，改 UIA 窗口文本识别）。
+- Base URL：用户在设置中填写，默认留空。
 
 ### 数据流
 

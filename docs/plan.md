@@ -37,7 +37,7 @@
 ### AI 集成
 
 - [x] OpenAI 兼容 `/chat/completions`，经 **Rust `chat_completions` 代理**（reqwest，绕过 CORS）。
-- [x] 活动分析 / 报告生成共用纯文本模型 `textModel`（默认 `deepseek-chat`，无需多模态视觉模型）。
+- [x] 活动分析 / 报告生成共用纯文本模型 `textModel`（默认留空，用户在设置中填写，无需多模态视觉模型）。
 - [x] AI 输出开发、会议、文档、沟通、其他五类活动。
 - [x] AI 描述简体中文、具体且 ≤20 字。
 - [x] 清晰错误映射（401/403/404/429/5xx）+ 失败本地降级分类。

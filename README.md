@@ -21,13 +21,13 @@
 - 存储：localStorage + SQLite（Rust rusqlite）
 - 窗口采集：Rust `windows-sys` 窗口枚举 + `windows` crate UI Automation 文本读取
 - AI：OpenAI 兼容接口
-  - 活动分析 / 报告生成共用纯文本模型，默认 `deepseek-chat`（无需多模态视觉模型，可在设置中更换）
+  - 活动分析 / 报告生成共用纯文本模型（无需多模态视觉模型）
   - 请求经 Rust 后端 `chat_completions` 代理（reqwest），绕过浏览器 CORS 限制，API Key 不暴露在 WebView JS 上下文
 - UI：React 19 + Tailwind CSS 4 + 自定义设计系统
   - 仪表盘数据可视化：24 小时彩色活动时间轴（对数缩放）、分类占比堆叠条、大数字指标卡（含较昨日增量）
   - 品牌青纯色主按钮、卡片层次阴影、分类彩色徽章（开发靛蓝 / 会议橙 / 文档青 / 沟通玫红 / 其他灰）
   - 系统字体栈（Segoe UI / 微软雅黑 / PingFang），细滚动条、状态呼吸点
-- 默认接口：`https://api.deepseek.com/v1`（可改为任何 OpenAI 兼容服务）
+- AI 接口：任何 OpenAI 兼容服务均可（Base URL、模型名在设置中填写，默认留空）
 
 ## 已实现功能
 
@@ -74,9 +74,10 @@ npm run tauri build
 
 1. 打开应用，进入“设置”。
 2. 填入兼容 OpenAI `/chat/completions` 的 API Key。
-3. 确认 Base URL，默认值为 `https://api.deepseek.com/v1`，可改为任何 OpenAI 兼容服务。
-4. 点击“保存设置”。
-5. 回到仪表盘点击“开始采集”。
+3. 填写 Base URL（任何 OpenAI 兼容服务，如 OpenAI / DeepSeek / 各类网关）。
+4. 填写模型名称（该服务下可用的纯文本对话模型）。
+5. 点击“保存设置”。
+6. 回到仪表盘点击“开始采集”。
 
 API Key 只保存在本机设置中，不应写入代码仓库、日志。
 

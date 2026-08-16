@@ -91,7 +91,7 @@ pub struct CapturedWindow {
 ```typescript
 POST {baseUrl}/chat/completions
 {
-  model: 'deepseek-chat',
+  model: '<用户在设置中填写的模型>',
   messages: [
     { role: 'system', content: '你是工作活动分析器...' },
     { role: 'user', content: '进程名 + 窗口标题 + 页面地址 + UIA 窗口文本 + 输出 JSON 要求' }
@@ -117,7 +117,7 @@ interface ActivityAnalysis {
 ```typescript
 POST {baseUrl}/chat/completions
 {
-  model: 'deepseek-chat',
+  model: '<用户在设置中填写的模型>',
   messages: [{ role: 'user', content: prompt }],
   max_tokens: 2000,
   temperature: 0.3

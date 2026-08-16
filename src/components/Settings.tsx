@@ -237,7 +237,7 @@ export function Settings() {
                 type="url"
                 value={localSettings.baseUrl}
                 onChange={e => updateField('baseUrl', e.target.value)}
-                placeholder="https://api.deepseek.com/v1"
+                placeholder="https://api.openai.com/v1（任何 OpenAI 兼容服务）"
                 className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
               />
             </div>
@@ -251,7 +251,7 @@ export function Settings() {
                 type="text"
                 value={localSettings.textModel}
                 onChange={e => updateField('textModel', e.target.value)}
-                placeholder="deepseek-chat"
+                placeholder="如 gpt-4o-mini / deepseek-chat"
                 className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
               />
               <p className="mt-1 text-xs text-gray-400">任何兼容 OpenAI 接口的纯文本对话模型均可</p>
