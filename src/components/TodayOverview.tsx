@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { Activity } from '../stores/activityStore'
 import { categoryVisual } from '../utils/categoryStyles'
 import { formatDuration } from '../utils/format'
+import { localDateKey } from '../utils/date'
 
 function isToday(iso: string) {
-  return new Date(iso).toDateString() === new Date().toDateString()
+  return localDateKey(iso) === localDateKey(new Date())
 }
 
 interface TodayOverviewProps {
@@ -12,6 +13,7 @@ interface TodayOverviewProps {
 }
 
 export function TodayOverview({ activities }: TodayOverviewProps) {
+  const [timelineMinutes, setTimelineMinutes] = useState<15 | 30>(30)
   const todayActivities = useMemo(() => activities.filter(a => isToday(a.timestamp)), [activities])
   
   const stats = useMemo(() => {
@@ -20,7 +22,7 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
       const d = new Date(a.timestamp)
       const y = new Date()
       y.setDate(y.getDate() - 1)
-      return d.toDateString() === y.toDateString()
+      return localDateKey(d) === localDateKey(y)
     }).length
     
     // 主要应用：出现次数最多的
@@ -51,14 +53,19 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
     return { todayCount, yesterdayCount, topApp, topAppCount, topCat, topCatCount, totalSeconds }
   }, [todayActivities])
 
-  /* P1优化: 时间轴数据 - 按小时聚合（同时统计每小时的主要分类，避免渲染时反复查找） */
-  const hourlyBuckets = useMemo(() => {
-    const counts: number[] = Array.from({ length: 24 }, () => 0)
-    const catCounts: Map<Activity['category'], number>[] = Array.from({ length: 24 }, () => new Map())
+  /* 时间轴数据：按 30/15 分钟聚合，同时缓存主要分类和具体活动摘要。 */
+  const timelineBuckets = useMemo(() => {
+    const bucketCount = (24 * 60) / timelineMinutes
+    const counts: number[] = Array.from({ length: bucketCount }, () => 0)
+    const catCounts: Map<Activity['category'], number>[] = Array.from({ length: bucketCount }, () => new Map())
+    const details: string[][] = Array.from({ length: bucketCount }, () => [])
     for (const a of todayActivities) {
-      const h = new Date(a.timestamp).getHours()
-      counts[h]++
-      catCounts[h].set(a.category, (catCounts[h].get(a.category) || 0) + 1)
+      const date = new Date(a.timestamp)
+      const bucket = Math.floor((date.getHours() * 60 + date.getMinutes()) / timelineMinutes)
+      counts[bucket]++
+      catCounts[bucket].set(a.category, (catCounts[bucket].get(a.category) || 0) + 1)
+      const detail = a.title && a.title !== a.app ? `${a.app} · ${a.title}` : a.app
+      if (!details[bucket].includes(detail)) details[bucket].push(detail)
     }
     const dominant = catCounts.map(counts2 => {
       let best: Activity['category'] | null = null
@@ -68,8 +75,8 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
       }
       return best
     })
-    return { counts, dominant }
-  }, [todayActivities])
+    return { counts, dominant, details }
+  }, [timelineMinutes, todayActivities])
 
   /* P1优化: 分类分布 */
   const categoryDistribution = useMemo(() => {
@@ -139,34 +146,61 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
       <section className="mb-6 rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-h3 font-semibold text-gray-900">今日时间轴</h2>
-          <span className="text-xs text-gray-400">共 {todayActivities.length} 条记录</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-400">共 {todayActivities.length} 条记录</span>
+            <div className="flex rounded-md border border-gray-200 bg-gray-50 p-0.5" aria-label="时间轴粒度">
+              {([30, 15] as const).map(minutes => (
+                <button
+                  key={minutes}
+                  type="button"
+                  onClick={() => setTimelineMinutes(minutes)}
+                  aria-pressed={timelineMinutes === minutes}
+                  className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    timelineMinutes === minutes
+                      ? 'bg-white text-gray-800 shadow-sm'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  {minutes} 分钟
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {/* P1优化: 时间轴柱状图 - 对数缩放,小柱子也可辨;容器防溢出 */}
-        <div className="flex items-end gap-0.5 h-16 overflow-hidden">
-          {hourlyBuckets.counts.map((count, i) => {
-            const hasActivity = count > 0
-            const dominantCat = hourlyBuckets.dominant[i]
-            const visual = dominantCat ? categoryVisual(dominantCat) : null
-            const maxCount = Math.max(...hourlyBuckets.counts, 1)
-            // 对数缩放:log(count+1)/log(max+1),让 1 条也有 ~15% 高度,极值不被压扁
-            const ratio = Math.log(count + 1) / Math.log(maxCount + 1)
-            return (
-              <div
-                key={i}
-                title={`${i.toString().padStart(2, '0')}:00 — ${count}条`}
-                className={`flex-1 min-w-[6px] rounded-t transition-opacity ${
-                  hasActivity 
-                    ? 'opacity-100 hover:opacity-75' 
-                    : 'opacity-20 bg-gray-100'
-                }`}
-                style={{
-                  height: `${Math.max(ratio * 100, count > 0 ? 8 : 0)}%`,
-                  backgroundColor: visual?.hex || undefined,
-                }}
-              />
-            )
-          })}
+        {/* 对数缩放让低频活动也可辨；15 分钟模式在窄屏横向滚动。 */}
+        <div className="overflow-x-auto pb-1">
+          <div
+            className="flex h-16 items-end gap-0.5 overflow-hidden"
+            style={{ minWidth: timelineMinutes === 15 ? '720px' : '420px' }}
+          >
+            {timelineBuckets.counts.map((count, i) => {
+              const hasActivity = count > 0
+              const dominantCat = timelineBuckets.dominant[i]
+              const visual = dominantCat ? categoryVisual(dominantCat) : null
+              const maxCount = Math.max(...timelineBuckets.counts, 1)
+              const ratio = Math.log(count + 1) / Math.log(maxCount + 1)
+              const startMinutes = i * timelineMinutes
+              const timeLabel = `${String(Math.floor(startMinutes / 60)).padStart(2, '0')}:${String(startMinutes % 60).padStart(2, '0')}`
+              const detailText = timelineBuckets.details[i].slice(0, 3).join('、')
+              const title = `${timeLabel} · ${count} 条${visual ? ` · ${visual.label}` : ''}${detailText ? `\n${detailText}` : ''}`
+              return (
+                <div
+                  key={i}
+                  title={title}
+                  className={`min-w-[4px] flex-1 rounded-t transition-opacity ${
+                    hasActivity
+                      ? 'opacity-100 hover:opacity-75'
+                      : 'bg-gray-100 opacity-20'
+                  }`}
+                  style={{
+                    height: `${Math.max(ratio * 100, count > 0 ? 8 : 0)}%`,
+                    backgroundColor: visual?.hex || undefined,
+                  }}
+                />
+              )
+            })}
+          </div>
         </div>
 
         {/* 时间标签 - 5 个刻度均分,避免窄容器挤压溢出 */}

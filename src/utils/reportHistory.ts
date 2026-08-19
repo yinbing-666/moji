@@ -17,6 +17,10 @@ export interface ReportHistoryItem {
 const REPORT_HISTORY_KEY = 'moji-report-history'
 const MAX_REPORT_HISTORY = 20
 
+export function hasStoredReportHistory(): boolean {
+  return localStorage.getItem(REPORT_HISTORY_KEY) !== null
+}
+
 function isReportType(value: unknown): value is ReportType {
   return value === 'daily' || value === 'weekly' || value === 'monthly'
 }
@@ -63,7 +67,7 @@ export function loadReportHistory(): ReportHistoryItem[] {
   }
 }
 
-function saveReportHistory(items: ReportHistoryItem[]) {
+export function saveReportHistory(items: ReportHistoryItem[]) {
   localStorage.setItem(REPORT_HISTORY_KEY, JSON.stringify(items.slice(0, MAX_REPORT_HISTORY)))
 }
 

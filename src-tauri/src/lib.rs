@@ -92,6 +92,7 @@ pub fn run() {
             db::db_delete_activity,
             db::db_clear_activities,
             db::db_import_activities,
+            db::db_replace_activities,
             // db: report history
             db::db_save_report_history,
             db::db_load_report_history,

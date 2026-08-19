@@ -14,9 +14,17 @@ interface RawActivity {
   title?: unknown
   description?: unknown
   screenshotBase64?: unknown
+  durationSeconds?: unknown
 }
 
 const VALID_CATEGORIES = ['dev', 'meeting', 'doc', 'communication', 'other'] as const
+const CATEGORY_ALIASES: Record<string, Activity['category']> = {
+  开发: 'dev',
+  会议: 'meeting',
+  文档: 'doc',
+  沟通: 'communication',
+  其他: 'other',
+}
 
 export function normalizeImportItem(raw: RawActivity): Activity {
   const id = typeof raw.id === 'string' && raw.id.trim()
@@ -36,6 +44,11 @@ export function normalizeImportItem(raw: RawActivity): Activity {
   const screenshotBase64 = typeof raw.screenshotBase64 === 'string' && raw.screenshotBase64.trim()
     ? raw.screenshotBase64
     : undefined
+  const durationSeconds = typeof raw.durationSeconds === 'number'
+    && Number.isFinite(raw.durationSeconds)
+    && raw.durationSeconds > 0
+    ? Math.round(raw.durationSeconds)
+    : undefined
 
   return {
     id,
@@ -45,6 +58,7 @@ export function normalizeImportItem(raw: RawActivity): Activity {
     title,
     description,
     ...(screenshotBase64 ? { screenshotBase64 } : {}),
+    ...(durationSeconds !== undefined ? { durationSeconds } : {}),
   }
 }
 
@@ -61,14 +75,14 @@ function parseJsonImport(text: string): Activity[] {
 function parseMarkdownImport(text: string): Activity[] {
   const items: Activity[] = []
 
-  // 格式：`- [timestamp] category | app | description` 或 `- **category** | app | description`
-  const recordLine = /-\s*(?:\[([^\]]*)\]\s*)?\*?\*?(\w+)\*?\*?\s*\|\s*([^|]+?)\s*\|\s*(.+)/g
+  // 紧凑格式：`- [timestamp] category | app | description`
+  const recordLine = /-\s*(?:\[([^\]]*)\]\s*)?\*?\*?([^|\s]+)\*?\*?\s*\|\s*([^|]+?)\s*\|\s*(.+)/g
 
   let match: RegExpExecArray | null
   while ((match = recordLine.exec(text)) !== null) {
     const [, rawTimestamp, rawCategory, rawApp, rawDesc] = match
     const timestamp = rawTimestamp?.trim() || new Date().toISOString()
-    const category = rawCategory.trim()
+    const category = CATEGORY_ALIASES[rawCategory.trim()] ?? rawCategory.trim()
     const app = rawApp.trim()
     const description = rawDesc.trim()
 
@@ -79,6 +93,28 @@ function parseMarkdownImport(text: string): Activity[] {
       title: app,
       description,
     }))
+  }
+
+  // 详细格式：每条记录以 `## 时间 · 分类` 开头，后面跟应用、窗口和内容字段。
+  const detailBlock = /^##\s+(.+?)\s+·\s+([^\r\n]+)[\r\n]+([\s\S]*?)(?=^##\s|(?![\s\S]))/gm
+  while ((match = detailBlock.exec(text)) !== null) {
+    const [, rawTimestamp, rawCategory, body] = match
+    const app = body.match(/^\s*-\s*应用：(.+)$/m)?.[1]?.trim() ?? ''
+    const title = body.match(/^\s*-\s*窗口：(.+)$/m)?.[1]?.trim() ?? ''
+    const description = body.match(/^\s*-\s*内容：(.+)$/m)?.[1]?.trim() ?? ''
+    if (!app && !title && !description) continue
+
+    items.push(normalizeImportItem({
+      timestamp: rawTimestamp.trim(),
+      category: CATEGORY_ALIASES[rawCategory.trim()] ?? rawCategory.trim(),
+      app,
+      title,
+      description,
+    }))
+  }
+
+  if (items.length === 0) {
+    throw new Error('Markdown 中未找到可导入的活动记录')
   }
 
   return items

@@ -13,9 +13,9 @@
 | 构建 | Vite | 6.x | 已接入 |
 | 截屏 | Rust `screenshots` | 0.8.x | 已接入 |
 | 窗口枚举 | Windows API | `windows-sys` | 已接入 |
-| 本地数据库 | SQLite | Tauri SQL Plugin | 依赖已接入，业务数据层未实现 |
+| 本地数据库 | SQLite | `rusqlite` 0.31 | 已接入，活动与报告历史双写 |
 | AI 接口 | OpenAI 兼容 | `/chat/completions` | 已接入 |
-| 托盘 | Tauri `tray-icon` feature | 原生能力 | feature 已开，托盘逻辑未实现 |
+| 托盘 | Tauri `tray-icon` feature | 原生能力 | 已实现关闭隐藏、显示和退出 |
 
 ## 桌面框架选择
 
@@ -34,7 +34,10 @@
 fn take_screenshot() -> Result<String, String>
 
 #[tauri::command]
-fn capture_visible_windows(excluded_keywords: Option<Vec<String>>) -> Result<Vec<CapturedWindow>, String>
+fn capture_visible_windows(
+    excluded_keywords: Option<Vec<String>>,
+    capture_images: Option<bool>,
+) -> Result<Vec<CapturedWindow>, String>
 ```
 
 ### CapturedWindow
@@ -72,17 +75,15 @@ pub struct CapturedWindow {
 
 ## 数据存储
 
-### 当前方案：localStorage
+### 当前方案：localStorage + SQLite
 
 - 活动记录 key：`xiaohei-activities`。
 - 设置 key：`xiaohei-settings`。
 - 报告历史 key：`moji-report-history`，最多 20 条。
 - API Key 只保存在本机 localStorage。
 - 缩略图默认不保存，用户开启后才写入活动记录。
-
-### 下一阶段：SQLite
-
-`tauri-plugin-sql` 和 `rusqlite` 已在依赖中，但当前前端业务数据层没有接入。下一阶段应新增统一数据访问层，再迁移旧 localStorage 数据。
+- 活动记录和报告历史同时写入 SQLite；启动时根据有效 localStorage 快照同步或从 SQLite 恢复。
+- SQLite 备份使用 online backup API，恢复前后执行 `PRAGMA quick_check`。
 
 ## AI 接口
 
@@ -134,19 +135,19 @@ POST {baseUrl}/chat/completions
 ## 前端结构
 
 - `src/App.tsx`：首页、设置页切换、今日概览。
-- `src/hooks/useScreenshot.ts`：截图计时器和截图结果分发。
-- `src/hooks/useAutoCapture.ts`：多窗口采集、压缩、AI 分析、活动写入。
-- `src/stores/activityStore.tsx`：活动和设置状态，localStorage 持久化。
+- `src/hooks/useScreenshot.ts`：采集计时器和结果分发。
+- `src/hooks/useAutoCapture.ts`：多窗口采集、隐私过滤、UIA 文本读取、可选缩略图和 AI 分析。
+- `src/stores/activityStore.tsx`：活动和设置状态，localStorage + SQLite 持久化。
 - `src/components/ActivityTimeline.tsx`：搜索、筛选、编辑、删除、导出。
 - `src/components/ReportView.tsx`：报告生成、复制、下载。
 - `src/components/Settings.tsx`：AI、采集、隐私设置。
-- `src/utils/reportHistory.ts`：报告历史 localStorage 读写。
+- `src/utils/reportHistory.ts`：报告历史 localStorage + SQLite 读写。
 
 ## 安全考虑
 
 1. API Key 仅保存在本机设置中，不进入代码仓库。
 2. 默认不保存截图缩略图。
-3. 排除关键词命中后不发送截图给 AI。
+3. 排除规则在读取 UIA 文本和可选截图前执行；命中窗口不进入 AI 分析。
 4. AI 分析上下文不发送完整本机进程路径，只发送可执行文件名。
 5. 当前未启用 shell 权限。
 6. 除 AI API 外没有云端同步。

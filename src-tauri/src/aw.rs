@@ -23,7 +23,10 @@ pub async fn aw_fetch_events(
     bucket_prefix: Option<String>,
     limit: Option<u32>,
 ) -> Result<AwSyncResult, String> {
-    let host = host.unwrap_or_else(|| "127.0.0.1".to_string());
+    let host = host
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "127.0.0.1".to_string());
     let port = port.unwrap_or(5600);
     let bucket_prefix = bucket_prefix.unwrap_or_else(|| "aw-watcher-window".to_string());
     let limit = limit.unwrap_or(1000);
@@ -41,6 +44,8 @@ pub async fn aw_fetch_events(
         .send()
         .await
         .map_err(|e| format!("连接 ActivityWatch 失败（{}:{}）: {}", host, port, e))?
+        .error_for_status()
+        .map_err(|e| format!("ActivityWatch buckets 请求失败: {e}"))?
         .json()
         .await
         .map_err(|e| format!("解析 buckets 响应失败: {}", e))?;
@@ -82,6 +87,8 @@ pub async fn aw_fetch_events(
         .send()
         .await
         .map_err(|e| format!("拉取窗口事件失败: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("ActivityWatch events 请求失败: {e}"))?
         .json()
         .await
         .map_err(|e| format!("解析事件响应失败: {}", e))?;
@@ -99,7 +106,10 @@ pub async fn aw_health(
     host: Option<String>,
     port: Option<u16>,
 ) -> Result<serde_json::Value, String> {
-    let host = host.unwrap_or_else(|| "127.0.0.1".to_string());
+    let host = host
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "127.0.0.1".to_string());
     let port = port.unwrap_or(5600);
 
     let client = reqwest::Client::builder()
@@ -112,6 +122,8 @@ pub async fn aw_health(
         .send()
         .await
         .map_err(|e| format!("ActivityWatch 未运行（{}:{}）: {}", host, port, e))?
+        .error_for_status()
+        .map_err(|e| format!("ActivityWatch 健康检查失败: {e}"))?
         .json()
         .await
         .map_err(|e| format!("解析 info 响应失败: {}", e))?;
@@ -137,18 +149,17 @@ fn urlencode(s: &str) -> String {
 }
 
 fn chrono_now_iso() -> String {
-    // 不用额外依赖 chrono，用系统时间格式化近似 ISO
+    // 不用额外依赖 chrono，按 UTC 输出与末尾 Z 一致的 ISO 时间。
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
-    let secs = now.as_secs();
-    let millis = now.subsec_millis();
-    // UTC+8 近似（本机时区）
-    let local = secs + 8 * 3600;
-    let days = local / 86400;
-    let rem = local % 86400;
+    format_unix_millis(now.as_secs(), now.subsec_millis())
+}
+
+fn format_unix_millis(secs: u64, millis: u32) -> String {
+    let days = secs / 86400;
+    let rem = secs % 86400;
     let (h, m, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
-    // 简单年/月/日计算（从 1970-01-01）
     let (y, mo, d) = civil_from_days(days as i64);
     format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
@@ -167,5 +178,21 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_unix_millis, urlencode};
+
+    #[test]
+    fn formats_utc_timestamp_with_z_suffix() {
+        assert_eq!(format_unix_millis(0, 0), "1970-01-01T00:00:00.000Z");
+        assert_eq!(format_unix_millis(8 * 3600, 123), "1970-01-01T08:00:00.123Z");
+    }
+
+    #[test]
+    fn encodes_non_ascii_bucket_ids() {
+        assert_eq!(urlencode("aw_测试"), "aw_%E6%B5%8B%E8%AF%95");
+    }
 }
 

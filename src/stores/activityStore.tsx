@@ -9,15 +9,22 @@ import {
   dbLoadActivities,
   dbDeleteActivity,
   dbClearActivities,
+  dbReplaceActivities,
   dbSaveBackup,
   dbFetchAwEvents,
+  dbLoadReportHistory,
   isSqliteAvailable,
+  type DbReportHistory,
 } from '../utils/db'
-import { loadReportHistory, removeReportHistoryItem, type ReportHistoryItem } from '../utils/reportHistory'
+import { hasStoredReportHistory, loadReportHistory, removeReportHistoryItem, saveReportHistory, type ReportHistoryItem } from '../utils/reportHistory'
+import { localDateKey } from '../utils/date'
+import { getTemplateDescription, loadCustomTemplates } from '../utils/templates'
 
 export type BackgroundPreset = 'plain' | 'mint' | 'sky' | 'graphite' | 'custom'
+export type ThemeMode = 'system' | 'light' | 'dark'
 
 export interface Appearance {
+  themeMode: ThemeMode
   backgroundPreset: BackgroundPreset
   customBackground?: string
 }
@@ -72,9 +79,9 @@ interface ActivityStore {
   updateSettings: (partial: Partial<Settings>) => void
   setIsAnalyzing: (v: boolean) => void
   /** 从 ActivityWatch 拉取数据并写入活动记录，返回新增条数 */
-  syncFromAw: () => Promise<number>
+  syncFromAw: (options?: { host?: string; port?: number }) => Promise<number>
   /* P1优化: 新增报告生成相关方法 */
-  generateDailyReport: (date: string) => Promise<void>
+  generateDailyReport: (date: string, templateKey?: string) => Promise<void>
   isGeneratingReport: boolean
   /** 最近生成/查看的报告（界面展示用） */
   lastReport: import('../utils/reportHistory').ReportHistoryItem | null
@@ -85,7 +92,7 @@ interface ActivityStore {
   /** 删除一条报告历史 */
   deleteReport: (id: string) => void
   connectionTestResult: { ok: boolean; message: string } | null
-  testAiConnection: () => Promise<void>
+  testAiConnection: (config?: Pick<Settings, 'apiKey' | 'baseUrl' | 'textModel'>) => Promise<void>
   /* P1优化: 新增数据导入导出方法 */
   importActivitiesFromJson: (data: unknown) => Promise<number>
   exportActivitiesAsJson: () => Promise<string>
@@ -105,7 +112,7 @@ const DEFAULT_SETTINGS: Settings = {
   excludedApps: [],
   excludedTitlePatterns: [],
   saveScreenshotThumbnails: false,
-  appearance: { backgroundPreset: 'plain' },
+  appearance: { themeMode: 'system', backgroundPreset: 'plain' },
   dataSource: 'window_text',
   awHost: '127.0.0.1',
   awPort: 5600,
@@ -199,17 +206,21 @@ function normalizeActivity(value: unknown): Activity | null {
 }
 
 const VALID_BG_PRESETS: BackgroundPreset[] = ['plain', 'mint', 'sky', 'graphite', 'custom']
+const VALID_THEME_MODES: ThemeMode[] = ['system', 'light', 'dark']
 
 function normalizeAppearance(value: unknown): Appearance {
   if (!value || typeof value !== 'object') return DEFAULT_SETTINGS.appearance
   const a = value as Partial<Appearance>
+  const themeMode: ThemeMode = (VALID_THEME_MODES as string[]).includes(a.themeMode as string)
+    ? a.themeMode as ThemeMode
+    : DEFAULT_SETTINGS.appearance.themeMode
   const backgroundPreset: BackgroundPreset = (VALID_BG_PRESETS as string[]).includes(a.backgroundPreset as string)
     ? a.backgroundPreset as BackgroundPreset
     : DEFAULT_SETTINGS.appearance.backgroundPreset
   const customBackground = typeof a.customBackground === 'string' && a.customBackground.trim()
     ? a.customBackground
     : undefined
-  return { backgroundPreset, ...(customBackground ? { customBackground } : {}) }
+  return { themeMode, backgroundPreset, ...(customBackground ? { customBackground } : {}) }
 }
 
 function normalizeExcludedKeywords(value: unknown): string[] {
@@ -230,6 +241,18 @@ function normalizeMaxWindowsPerCapture(value: unknown): number {
     : DEFAULT_SETTINGS.maxWindowsPerCapture
 }
 
+function mapReportHistory(items: DbReportHistory[]): ReportHistoryItem[] {
+  return items
+    .filter(item => item.report_type === 'daily' || item.report_type === 'weekly' || item.report_type === 'monthly')
+    .map(item => ({
+      id: item.id,
+      createdAt: item.created_at,
+      type: item.report_type as ReportHistoryItem['type'],
+      template: item.template,
+      content: item.content,
+    }))
+}
+
 function loadActivities(): Activity[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -243,6 +266,19 @@ function loadActivities(): Activity[] {
       .filter((activity): activity is Activity => activity !== null)
   } catch {
     return []
+  }
+}
+
+function hasStoredActivitiesSnapshot(): boolean {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw === null) return false
+    const parsed = JSON.parse(raw)
+    // 空数组是用户明确清空后的有效快照；含非对象项的数组更像损坏数据，应允许 SQLite 恢复。
+    return Array.isArray(parsed)
+      && parsed.every(item => item !== null && typeof item === 'object')
+  } catch {
+    return false
   }
 }
 
@@ -304,6 +340,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
 
   // activities 单条可能几百 KB（含缩略图），debounce 500ms 写盘，避免每次 addActivity 都同步 stringify+落盘卡顿
   const activitiesRef = useRef(activities)
+  const hadStoredActivitiesRef = useRef(hasStoredActivitiesSnapshot())
   const saveTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -333,21 +370,35 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
 
   // SQLite 启动加载 / 迁移
   const sqliteReadyRef = useRef(false)
+  const awSyncingRef = useRef(false)
   const [sqliteReady, setSqliteReady] = useState(false)
   useEffect(() => {
     let cancelled = false
     void (async () => {
       const available = await isSqliteAvailable()
       if (cancelled) return
-      setSqliteReady(available)
       if (!available) return
-      sqliteReadyRef.current = true
+      const initialActivities = activitiesRef.current
+      const hasLocalSnapshot = hadStoredActivitiesRef.current || initialActivities.length > 0
       try {
         const sqliteData = await dbLoadActivities()
-        if (cancelled || !sqliteData) return
-        if (sqliteData.length > 0) {
-          // SQLite 有数据，用它覆盖 localStorage（优先信任 SQLite）
-          const mapped: Activity[] = sqliteData.map(a => normalizeActivity({
+        if (cancelled) return
+        if (!sqliteData) throw new Error('SQLite 活动读取失败')
+
+        if (hasLocalSnapshot) {
+          // 有效 localStorage 快照是前端当前状态源；事务替换可修复 SQLite 漏写、旧值和多余记录。
+          // 替换期间若有新活动到达，重试最新快照，避免初始化窗口丢写。
+          let snapshot = activitiesRef.current
+          for (let attempt = 0; attempt < 5; attempt++) {
+            const replaced = await dbReplaceActivities(JSON.stringify(snapshot))
+            if (replaced === null) throw new Error('SQLite 活动同步失败')
+            const latest = activitiesRef.current
+            if (latest === snapshot) break
+            snapshot = latest
+          }
+        } else if (sqliteData.length > 0) {
+          // localStorage 不存在时才从 SQLite 恢复，避免 SQLite 单次写入失败覆盖本地最新状态。
+          const restored: Activity[] = sqliteData.map(a => normalizeActivity({
             id: a.id,
             timestamp: a.timestamp,
             category: a.category,
@@ -357,37 +408,67 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
             screenshotBase64: a.screenshot_base64 ?? undefined,
             durationSeconds: a.duration_seconds ?? undefined,
           })).filter((a): a is Activity => a !== null)
+          const latest = activitiesRef.current
+          const mapped = latest === initialActivities
+            ? restored
+            : [
+                ...latest,
+                ...restored.filter(item => !latest.some(current => current.id === item.id)),
+              ]
+          activitiesRef.current = mapped
           setActivities(mapped)
-        } else {
-          // SQLite 空但 localStorage 有数据 → 迁移
-          const local = loadActivities()
-          if (local.length > 0) {
-            // Bulk import via Rust command
-            const { dbImportActivities } = await import('../utils/db')
-            await dbImportActivities(JSON.stringify(local))
+          if (latest !== initialActivities) {
+            const replaced = await dbReplaceActivities(JSON.stringify(mapped))
+            if (replaced === null) throw new Error('SQLite 活动同步失败')
           }
+        } else if (activitiesRef.current !== initialActivities) {
+          // SQLite 为空但初始化期间产生了新记录，也要把最新前端快照落入数据库。
+          const replaced = await dbReplaceActivities(JSON.stringify(activitiesRef.current))
+          if (replaced === null) throw new Error('SQLite 活动同步失败')
         }
-      } catch {
+
+        if (!cancelled) {
+          sqliteReadyRef.current = true
+          setSqliteReady(true)
+        }
+      } catch (error) {
         sqliteReadyRef.current = false
+        if (!cancelled) setSqliteReady(false)
+        console.error('SQLite 初始化或同步失败:', error)
       }
     })()
     return () => { cancelled = true }
   }, [])
 
+  // localStorage 不存在时从 SQLite 恢复报告历史；显式保存的空数组不应被恢复回来。
+  useEffect(() => {
+    if (hasStoredReportHistory()) return
+    void dbLoadReportHistory().then(items => {
+      if (!items || items.length === 0) return
+      const restored = mapReportHistory(items)
+      if (restored.length > 0) {
+        saveReportHistory(restored)
+        setReportHistory(restored)
+      }
+    }).catch(() => {})
+  }, [])
+
   const saveToSqlite = useCallback((activity: Activity) => {
     if (!sqliteReady) return
-    void dbSaveActivity(activity).catch(() => {})
+    void dbSaveActivity(activity).then(ok => {
+      if (!ok) console.error('SQLite 保存活动失败，本地 localStorage 仍保留当前记录')
+    }).catch(() => {})
   }, [sqliteReady])
 
   const updateActivity = useCallback((id: string, partial: Partial<Omit<Activity, 'id' | 'timestamp'>>) => {
-    setActivities(prev => {
-      const next = prev.map(activity =>
-        activity.id === id ? { ...activity, ...partial } : activity,
-      )
-      const updated = next.find(a => a.id === id)
-      if (updated) saveToSqlite(updated)
-      return next
-    })
+    const next = activitiesRef.current.map(activity =>
+      activity.id === id ? { ...activity, ...partial } : activity,
+    )
+    const updated = next.find(a => a.id === id)
+    if (!updated) return
+    activitiesRef.current = next
+    setActivities(next)
+    saveToSqlite(updated)
   }, [saveToSqlite])
 
   const addActivity = useCallback((activity: Omit<Activity, 'id' | 'timestamp'>) => {
@@ -396,15 +477,17 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       id: createActivityId(),
       timestamp: new Date().toISOString(),
     }
-    // 双源并行去重：同 app+title 且在 90 秒内出现过的记录不重复新增。
+    // 双源并行去重：窗口覆盖至少一个采集周期，确保默认 5 分钟间隔也能累计时长。
     // UIA 采集（无 durationSeconds）命中去重时，视为同一活动持续了一个采集周期，
     // 把间隔累加到已有记录的时长上，让时间轴能反映真实停留时间。
     const ts = Date.parse(newActivity.timestamp)
-    const duplicate = activitiesRef.current.find(a =>
-      a.app === newActivity.app
-      && a.title === newActivity.title
-      && Math.abs(Date.parse(a.timestamp) - ts) < 90_000
-    )
+    const duplicateWindowMs = Math.max(90_000, (settings.intervalSeconds + 30) * 1000)
+    const duplicate = activitiesRef.current.find(a => {
+      const activityEnd = Date.parse(a.timestamp) + (a.durationSeconds ?? 0) * 1000
+      return a.app === newActivity.app
+        && a.title === newActivity.title
+        && Math.abs(activityEnd - ts) < duplicateWindowMs
+    })
     if (duplicate) {
       if (newActivity.durationSeconds === undefined) {
         updateActivity(duplicate.id, {
@@ -413,7 +496,9 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       }
       return
     }
-    setActivities(prev => [newActivity, ...prev])
+    const next = [newActivity, ...activitiesRef.current]
+    activitiesRef.current = next
+    setActivities(next)
     saveToSqlite(newActivity)
   }, [saveToSqlite, settings.intervalSeconds, updateActivity])
 
@@ -422,20 +507,22 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     if (!normalized) return false
     // 用 ref 读当前列表，避免 setState 异步导致返回值不可靠
     if (activitiesRef.current.some(a => a.id === normalized.id)) return false
-    setActivities(prev => {
-      if (prev.some(a => a.id === normalized.id)) return prev
-      return [normalized, ...prev]
-    })
+    const next = [normalized, ...activitiesRef.current]
+    activitiesRef.current = next
+    setActivities(next)
     saveToSqlite(normalized)
     return true
   }, [saveToSqlite])
 
   const removeActivity = useCallback((id: string) => {
-    setActivities(prev => prev.filter(a => a.id !== id))
+    const next = activitiesRef.current.filter(a => a.id !== id)
+    activitiesRef.current = next
+    setActivities(next)
     if (sqliteReady) void dbDeleteActivity(id).catch(() => {})
   }, [sqliteReady])
 
   const clearActivities = useCallback(() => {
+    activitiesRef.current = []
     setActivities([])
     if (sqliteReady) void dbClearActivities().catch(() => {})
   }, [sqliteReady])
@@ -454,7 +541,16 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       screenshotBase64: a.screenshot_base64 ?? undefined,
       durationSeconds: a.duration_seconds ?? undefined,
     })).filter((a): a is Activity => a !== null)
+    activitiesRef.current = mapped
     setActivities(mapped)
+
+    const sqliteHistory = await dbLoadReportHistory()
+    if (sqliteHistory) {
+      const restoredHistory = mapReportHistory(sqliteHistory)
+      saveReportHistory(restoredHistory)
+      setReportHistory(restoredHistory)
+      setLastReport(restoredHistory[0] ?? null)
+    }
     return mapped.length
   }, [sqliteReady])
 
@@ -477,12 +573,14 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   }, [])
 
   /** 从 ActivityWatch 同步：拉事件 → 转活动 → 去重写入 */
-  const syncFromAw = useCallback(async (): Promise<number> => {
+  const syncFromAw = useCallback(async (options?: { host?: string; port?: number }): Promise<number> => {
+    if (awSyncingRef.current) return 0
+    awSyncingRef.current = true
     let added = 0
     try {
       const result = await dbFetchAwEvents({
-        host: settings.awHost,
-        port: settings.awPort,
+        host: options?.host ?? settings.awHost,
+        port: options?.port ?? settings.awPort,
         limit: 2000,
       })
       if (!result) return 0
@@ -509,7 +607,9 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
           id: createActivityId(),
           timestamp: eventTime.toISOString(),
         }
-        setActivities(prev => [newActivity, ...prev])
+        const next = [newActivity, ...activitiesRef.current]
+        activitiesRef.current = next
+        setActivities(next)
         saveToSqlite(newActivity)
         added++
       }
@@ -517,15 +617,18 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error('AW sync failed:', err)
       return added
+    } finally {
+      awSyncingRef.current = false
     }
   }, [settings.awHost, settings.awPort, saveToSqlite])
 
   /* P1优化: 测试AI连接 */
-  const testAiConnectionCallback = useCallback(async () => {
+  const testAiConnectionCallback = useCallback(async (config?: Pick<Settings, 'apiKey' | 'baseUrl' | 'textModel'>) => {
     try {
       const { testAiConnection } = await import('../utils/ai')
       setIsGeneratingReport(true)
-      const result = await testAiConnection(settings.apiKey, settings.baseUrl, settings.textModel)
+      const activeConfig = config ?? settings
+      const result = await testAiConnection(activeConfig.apiKey, activeConfig.baseUrl, activeConfig.textModel)
       setConnectionTestResult(result)
     } catch (err) {
       setConnectionTestResult({
@@ -538,13 +641,14 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   }, [settings.apiKey, settings.baseUrl, settings.textModel])
 
   /* P1优化: 生成日报 */
-  const generateDailyReport = useCallback(async (date: string) => {
+  const generateDailyReport = useCallback(async (date: string, templateKey = 'standard') => {
     try {
       const { generateReport } = await import('../utils/ai')
       setIsGeneratingReport(true)
       
       // 筛选指定日期的活动
-      const dayActivities = activitiesRef.current.filter(a => a.timestamp.startsWith(date))
+      const dayActivities = activitiesRef.current.filter(a => localDateKey(a.timestamp) === date)
+      const templateDescription = getTemplateDescription(templateKey, loadCustomTemplates())
       
       const reportContent = await generateReport(
         dayActivities.map(a => ({
@@ -557,11 +661,12 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
         settings.apiKey,
         settings.baseUrl,
         settings.textModel,
+        templateDescription,
       )
 
       // 保存到历史记录并展示在界面上（下载改为手动触发，不再自动弹下载框）
       const { addReportHistoryItem } = await import('../utils/reportHistory')
-      const nextHistory = addReportHistoryItem(loadReportHistory(), 'daily', reportContent, 'standard')
+      const nextHistory = addReportHistoryItem(loadReportHistory(), 'daily', reportContent, templateKey)
       setReportHistory(nextHistory)
       setLastReport(nextHistory[0] ?? null)
     } finally {
@@ -605,8 +710,6 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
 
   /* P1优化: 导出JSON数据 */
   const exportActivitiesAsJsonCallback = useCallback(async (): Promise<string> => {
-    const { exportActivitiesAsJson } = await import('../utils/export')
-    exportActivitiesAsJson(activitiesRef.current)
     return JSON.stringify(activitiesRef.current, null, 2)
   }, [])
 

@@ -13,6 +13,10 @@
   --color-brand-800: #115e59;
   --color-brand-900: #134e4a;
 
+  --color-surface: #ffffff;
+  --color-sidebar: #fafafa;
+  --color-app-canvas: #fafafa;
+
   /* P1优化: 字号层级系统 - 替代原来的text-sm/text-base单一体系 */
   --text-h1: 1.875rem;    /* 30px - 页面主标题 */
   --text-h2: 1.5rem;      /* 24px - 区块标题 */
@@ -41,13 +45,97 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   scroll-behavior: smooth;
+  color-scheme: light;
+}
+
+html.dark {
+  --color-surface: #18181b;
+  --color-sidebar: #111113;
+  --color-app-canvas: #09090b;
+  --color-brand-50: #0d2d29;
+  --color-brand-100: #13423c;
+  --color-brand-200: #1a5b53;
+  --color-brand-300: #238277;
+  --color-gray-50: #202024;
+  --color-gray-100: #27272a;
+  --color-gray-200: #3f3f46;
+  --color-gray-300: #52525b;
+  --color-gray-400: #a1a1aa;
+  --color-gray-500: #a1a1aa;
+  --color-gray-600: #d4d4d8;
+  --color-gray-700: #e4e4e7;
+  --color-gray-800: #f4f4f5;
+  --color-gray-900: #fafafa;
+  --color-indigo-50: #24233f;
+  --color-indigo-100: #34315f;
+  --color-orange-50: #352116;
+  --color-orange-100: #4d2b18;
+  --color-sky-50: #152b38;
+  --color-sky-100: #1a3b4f;
+  --color-pink-50: #361b2b;
+  --color-pink-100: #4c2039;
+  --color-zinc-50: #202024;
+  --color-zinc-100: #27272a;
+  --color-amber-100: #4a3a12;
+  --color-amber-200: #604b17;
+  --color-amber-300: #80651f;
+  --color-red-200: #5f292f;
+  --color-red-300: #7f333d;
+  --color-red-400: #a43f4d;
+  --color-teal-100: #134e4a;
+  --color-teal-200: #16675f;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.32), 0 1px 2px rgba(0,0,0,0.24);
+  --shadow-elevated: 0 8px 18px rgba(0,0,0,0.32), 0 3px 8px rgba(0,0,0,0.22);
 }
 
 body {
   margin: 0;
-  background-color: #fafafa;
-  color: #111827;
+  background-color: var(--color-app-canvas);
+  color: var(--color-gray-900);
 }
+
+html.dark .text-brand-600,
+html.dark .text-brand-700,
+html.dark .text-brand-800 {
+  color: #5eead4;
+}
+
+html.dark .bg-white {
+  background-color: var(--color-surface);
+}
+
+html.dark .bg-white\/80 {
+  background-color: color-mix(in srgb, var(--color-surface) 80%, transparent);
+}
+
+html.dark .bg-white\/90 {
+  background-color: color-mix(in srgb, var(--color-surface) 90%, transparent);
+}
+
+html.dark .to-white {
+  --tw-gradient-to: var(--color-surface);
+}
+
+html.dark .text-indigo-700 { color: #a5b4fc; }
+html.dark .text-orange-700 { color: #fdba74; }
+html.dark .text-sky-700 { color: #7dd3fc; }
+html.dark .text-pink-700 { color: #f9a8d4; }
+html.dark .text-zinc-600 { color: #d4d4d8; }
+html.dark .text-amber-800,
+html.dark .text-amber-900 { color: #fde68a; }
+html.dark .text-red-600,
+html.dark .text-red-700,
+html.dark .text-red-800 { color: #fca5a5; }
+html.dark .text-teal-600,
+html.dark .text-teal-700 { color: #5eead4; }
+html.dark .text-green-600 { color: #86efac; }
+
+html.dark .bg-amber-50 { background-color: #33280f; }
+html.dark .bg-orange-50 { background-color: #352116; }
+html.dark .bg-red-50 { background-color: #381719; }
+html.dark .bg-red-50\/30 { background-color: rgb(56 23 25 / 0.3); }
+html.dark .bg-teal-50 { background-color: #102d2a; }
+html.dark .bg-teal-50\/30 { background-color: rgb(16 45 42 / 0.3); }
 
 /* 品牌色文本选区，弱化默认浏览器蓝 */
 ::selection {
@@ -82,4 +170,69 @@ body {
 ::-webkit-scrollbar-thumb {
   background-color: rgba(156,163,175,0.35);
   border-radius: 9999px;
+}
+
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  body {
+    background: #fff;
+    color: #111827;
+  }
+
+  #root,
+  #root > div,
+  main {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  aside {
+    display: none !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .report-print-root,
+  .report-print-root * {
+    visibility: visible;
+  }
+
+  .report-print-root {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    --color-surface: #fff;
+    --color-gray-50: #f9fafb;
+    --color-gray-100: #f3f4f6;
+    --color-gray-200: #e5e7eb;
+    --color-gray-300: #d1d5db;
+    --color-gray-400: #9ca3af;
+    --color-gray-500: #6b7280;
+    --color-gray-600: #4b5563;
+    --color-gray-700: #374151;
+    --color-gray-800: #1f2937;
+    --color-gray-900: #111827;
+    background: #fff !important;
+    color: #111827 !important;
+  }
+
+  html.dark .report-print-root .text-brand-600,
+  html.dark .report-print-root .text-brand-700,
+  html.dark .report-print-root .text-brand-800 {
+    color: #0f766e;
+  }
+
+  .report-no-print {
+    display: none !important;
+  }
+
+  .report-content {
+    max-height: none !important;
+    overflow: visible !important;
+  }
 }

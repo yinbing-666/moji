@@ -3,6 +3,7 @@ import { useActivityStore, type Activity } from '../stores/activityStore'
 import { categoryVisual } from '../utils/categoryStyles'
 import { formatDuration } from '../utils/format'
 import { ScreenshotModal } from './ScreenshotModal'
+import { localDateKey } from '../utils/date'
 
 interface ActivityTimelineProps {
   activities: Activity[]
@@ -13,7 +14,7 @@ type CategoryFilter = 'all' | Activity['category']
 const CATEGORY_OPTIONS: CategoryFilter[] = ['all', 'dev', 'meeting', 'doc', 'communication', 'other']
 
 function isToday(iso: string) {
-  return new Date(iso).toDateString() === new Date().toDateString()
+  return localDateKey(iso) === localDateKey(new Date())
 }
 
 /** 分组标题：今天 / 昨天 / M月d日（带星期） */

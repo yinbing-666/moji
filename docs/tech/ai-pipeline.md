@@ -17,7 +17,9 @@ Rust 枚举可见窗口
   -> 写入 localStorage + SQLite
   -> UI 展示活动时间线
   -> 用户触发报告生成（同一纯文本模型）
-  -> 按范围筛选活动：今天 / 近 7 天 / 近 30 天 / 全部，默认今天
+  -> 按指定本地日期筛选活动
+  -> 选择内置或自定义模板；自定义模板可在报告页本地 CRUD
+  -> 将模板描述注入报告 prompt
   -> Markdown
   -> 仅成功生成的报告进入正文和历史；配置、空记录、失败只显示为提示
   -> 保存到 moji-report-history（localStorage + SQLite）
@@ -89,7 +91,7 @@ Rust 枚举可见窗口
 ### Prompt
 
 ```text
-请根据以下活动记录生成一份简洁的中文 Markdown 日报/周报/月报。
+请根据以下活动记录生成一份简洁的中文 Markdown 日报。
 结构固定为：主要完成、沟通协作、问题阻塞、明日/后续计划。
 不要编造记录中不存在的成果。
 
@@ -101,7 +103,7 @@ Rust 枚举可见窗口
 
 当前不强制解析 Markdown 结构，直接展示模型返回内容。用户可以：
 
-- 选择报告范围：今天 / 近 7 天 / 近 30 天 / 全部记录。
+- 选择报告日期。
 - 复制报告。
 - 下载 Markdown。
 - 从历史报告中恢复查看。
@@ -112,7 +114,7 @@ Rust 枚举可见窗口
 
 - localStorage key：`moji-report-history`（同时写入 SQLite `report_history` 表）。
 - 最多保留最近 20 条。
-- 字段：`id`、`createdAt`、`type`、`content`。
+- 字段：`id`、`createdAt`、`type`、`template`、`content`。
 - 不保存 API Key。
 - 仅保存成功生成且非空的报告正文。
 

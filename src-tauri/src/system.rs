@@ -150,6 +150,15 @@ pub fn diagnose_db(app_handle: tauri::AppHandle) -> Result<String, String> {
         return Ok("数据库文件尚未创建（首次运行后自动生成）".to_string());
     }
 
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("数据库无法打开: {e}"))?;
+    let quick_check: String = conn
+        .query_row("PRAGMA quick_check", [], |row| row.get(0))
+        .map_err(|e| format!("数据库检查失败: {e}"))?;
+    if quick_check != "ok" {
+        return Err(format!("数据库完整性检查失败: {quick_check}"));
+    }
+
     let size = std::fs::metadata(&db_path)
         .map(|m| m.len())
         .unwrap_or(0);

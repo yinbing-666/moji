@@ -16,7 +16,7 @@ interface DbActivity {
   duration_seconds?: number | null
 }
 
-interface DbReportHistory {
+export interface DbReportHistory {
   id: string
   created_at: string
   report_type: string
@@ -119,6 +119,16 @@ export async function dbImportActivities(data: string): Promise<number | null> {
   return call<number>('db_import_activities', { data })
 }
 
+async function callStrict<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
+  const inv = await getInvoke()
+  if (!inv) return null
+  return (await inv(cmd, args)) as T
+}
+
+export async function dbReplaceActivities(data: string): Promise<number | null> {
+  return callStrict<number>('db_replace_activities', { data })
+}
+
 // ── Report History ──
 
 export async function dbSaveReportHistory(item: {
@@ -148,15 +158,15 @@ export async function dbDeleteReportHistory(id: string): Promise<boolean> {
 // ── Backup / Restore ──
 
 export async function dbSaveBackup(): Promise<boolean> {
-  return (await call('save_backup')) !== null
+  return (await callStrict('save_backup')) !== null
 }
 
 export async function dbLoadBackup(): Promise<boolean> {
-  return (await callOr<boolean>('load_backup', undefined, false))
+  return (await callStrict<boolean>('load_backup')) ?? false
 }
 
 export async function dbRestoreBackupToDb(): Promise<number | null> {
-  return call<number>('restore_backup_to_db')
+  return callStrict<number>('restore_backup_to_db')
 }
 
 // ── ActivityWatch ──
@@ -220,8 +230,15 @@ export interface AwAnalyticsResult {
 }
 
 /** 运行 AW 效率分析(Python 脚本),返回关键指标 */
-export async function runAwAnalytics(period: string): Promise<AwAnalyticsResult | null> {
-  return call<AwAnalyticsResult>('run_aw_analytics', { period })
+export async function runAwAnalytics(
+  period: string,
+  options?: { host?: string; port?: number },
+): Promise<AwAnalyticsResult | null> {
+  return call<AwAnalyticsResult>('run_aw_analytics', {
+    period,
+    host: options?.host,
+    port: options?.port,
+  })
 }
 
 /** 用系统默认浏览器打开本地 HTML 报告 */
@@ -254,7 +271,7 @@ export async function dbIsScreenLocked(): Promise<boolean> {
 }
 
 export async function dbDiagnoseDb(): Promise<string | null> {
-  return call<string>('diagnose_db')
+  return callStrict<string>('diagnose_db')
 }
 
 // ── Window Text (UI Automation) ──

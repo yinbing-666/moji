@@ -54,20 +54,29 @@ pub struct AwAnalyticsResult {
     pub report_html: String,
 }
 
-/// 定位脚本目录:CARGO_MANIFEST_DIR = src-tauri,脚本在 ../tools/activitywatch-analytics
-fn script_dir() -> Result<PathBuf, String> {
+/// 安装包优先从资源目录读取；开发环境回退到仓库内的 vendored 脚本。
+fn script_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let dir = manifest
-        .parent()
-        .ok_or_else(|| "无法定位项目根目录".to_string())?
-        .join("tools/activitywatch-analytics");
-    if !dir.join("scripts/activitywatch_analytics.py").exists() {
-        return Err(format!(
-            "ActivityWatch 分析脚本不存在: {}",
-            dir.join("scripts/activitywatch_analytics.py").display()
-        ));
+    let mut candidates = Vec::new();
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        candidates.push(resource_dir.join("tools/activitywatch-analytics"));
     }
-    Ok(dir)
+    if let Some(project_root) = manifest.parent() {
+        candidates.push(project_root.join("tools/activitywatch-analytics"));
+    }
+
+    for dir in &candidates {
+        if dir.join("scripts/activitywatch_analytics.py").exists() {
+            return Ok(dir.clone());
+        }
+    }
+
+    let checked = candidates
+        .iter()
+        .map(|dir| dir.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(format!("ActivityWatch 分析脚本不存在，已检查: {checked}"))
 }
 
 /// 运行 AW 分析脚本并解析 report.json,返回关键指标。
@@ -76,8 +85,10 @@ fn script_dir() -> Result<PathBuf, String> {
 pub async fn run_aw_analytics(
     app_handle: tauri::AppHandle,
     period: String,
+    host: Option<String>,
+    port: Option<u16>,
 ) -> Result<AwAnalyticsResult, String> {
-    let dir = script_dir()?;
+    let dir = script_dir(&app_handle)?;
     let script = dir.join("scripts/activitywatch_analytics.py");
 
     let app_data_dir = app_handle
@@ -87,21 +98,36 @@ pub async fn run_aw_analytics(
     let output_root = app_data_dir.join("aw-reports");
     std::fs::create_dir_all(&output_root).map_err(|e| format!("创建输出目录失败: {e}"))?;
 
-    // 先清空旧输出,避免读到上次的 report.json
-    let _ = std::fs::remove_dir_all(&output_root);
-    std::fs::create_dir_all(&output_root).map_err(|e| format!("创建输出目录失败: {e}"))?;
+    let mut python_args = vec![
+        script.to_string_lossy().to_string(),
+        "analyze".to_string(),
+        "--period".to_string(),
+        period.clone(),
+        "--locale".to_string(),
+        "zh-CN".to_string(),
+        "--output".to_string(),
+        output_root.to_string_lossy().to_string(),
+    ];
 
-    let output = Command::new("python")
-        .arg(&script)
-        .arg("analyze")
-        .arg("--period")
-        .arg(&period)
-        .arg("--locale")
-        .arg("zh-CN")
-        .arg("--output")
-        .arg(&output_root)
-        .output()
-        .map_err(|e| format!("无法启动 Python(请确认已安装 Python 3): {e}"))?;
+    if let Some(host) = host.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()) {
+        python_args.push("--api-base".to_string());
+        python_args.push(format!("http://{}:{}", host, port.unwrap_or(5600)));
+    }
+
+    let output = match Command::new("python").args(&python_args).output() {
+        Ok(output) => output,
+        Err(error)
+            if cfg!(target_os = "windows")
+                && error.kind() == std::io::ErrorKind::NotFound =>
+        {
+            Command::new("py")
+                .arg("-3")
+                .args(&python_args)
+                .output()
+                .map_err(|fallback| format!("无法启动 Python 3（已尝试 python 和 py -3）: {fallback}"))?
+        }
+        Err(error) => return Err(format!("无法启动 Python(请确认已安装 Python 3): {error}")),
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

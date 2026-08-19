@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, DatabaseName, OpenFlags};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -203,7 +203,7 @@ pub fn db_load_activities_paginated(
     }
     if params.today_only.unwrap_or(false) {
         conditions.push(format!(
-            "date(timestamp) = date('now', 'localtime')"
+            "date(timestamp, 'localtime') = date('now', 'localtime')"
         ));
     }
     if let Some(ref kw) = params.keyword {
@@ -319,6 +319,121 @@ pub fn db_import_activities(
     Ok(total)
 }
 
+#[tauri::command]
+pub fn db_replace_activities(
+    db: tauri::State<'_, Database>,
+    data: String,
+) -> Result<usize, String> {
+    let items: Vec<DbActivity> =
+        serde_json::from_str(&data).map_err(|e| format!("Invalid JSON: {e}"))?;
+
+    let mut conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
+    replace_activities(&mut conn, &items)
+}
+
+fn replace_activities(conn: &mut Connection, items: &[DbActivity]) -> Result<usize, String> {
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Failed to start activity replacement: {e}"))?;
+    tx.execute("DELETE FROM activities", [])
+        .map_err(|e| format!("Failed to clear activities for replacement: {e}"))?;
+
+    for item in items {
+        tx.execute(
+            "INSERT INTO activities (id, timestamp, category, app_name, title, description, screenshot_base64, duration_seconds)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                item.id,
+                item.timestamp,
+                item.category,
+                item.app_name,
+                item.title,
+                item.description,
+                item.screenshot_base64,
+                item.duration_seconds,
+            ],
+        )
+        .map_err(|e| format!("Failed to replace activity: {e}"))?;
+    }
+
+    tx.commit()
+        .map_err(|e| format!("Failed to commit activity replacement: {e}"))?;
+    Ok(items.len())
+}
+
+#[cfg(test)]
+mod activity_replacement_tests {
+    use super::{replace_activities, DbActivity};
+    use rusqlite::Connection;
+
+    fn connection_with_activity_table() -> Connection {
+        let conn = Connection::open_in_memory().expect("in-memory database should open");
+        conn.execute_batch(
+            "CREATE TABLE activities (
+                id TEXT PRIMARY KEY,
+                timestamp TEXT NOT NULL,
+                category TEXT NOT NULL,
+                app_name TEXT NOT NULL,
+                title TEXT,
+                description TEXT NOT NULL,
+                screenshot_base64 TEXT,
+                duration_seconds INTEGER
+            );",
+        )
+        .expect("activity table should be created");
+        conn
+    }
+
+    fn activity(id: &str, description: &str) -> DbActivity {
+        DbActivity {
+            id: id.to_string(),
+            timestamp: "2026-08-19T00:00:00.000Z".to_string(),
+            category: "dev".to_string(),
+            app_name: "Code".to_string(),
+            title: Some("moji-clean".to_string()),
+            description: description.to_string(),
+            screenshot_base64: None,
+            duration_seconds: Some(300),
+        }
+    }
+
+    #[test]
+    fn replaces_activity_snapshot_in_one_transaction() {
+        let mut conn = connection_with_activity_table();
+        replace_activities(&mut conn, &[activity("new", "new snapshot")])
+            .expect("replacement should succeed");
+
+        let row: (String, String, i64) = conn
+            .query_row(
+                "SELECT id, description, duration_seconds FROM activities",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("replacement row should exist");
+        assert_eq!(row, ("new".to_string(), "new snapshot".to_string(), 300));
+    }
+
+    #[test]
+    fn rolls_back_when_replacement_contains_duplicate_ids() {
+        let mut conn = connection_with_activity_table();
+        replace_activities(&mut conn, &[activity("old", "existing")])
+            .expect("initial row should be inserted");
+
+        let result = replace_activities(
+            &mut conn,
+            &[activity("duplicate", "first"), activity("duplicate", "second")],
+        );
+        assert!(result.is_err());
+
+        let row: (String, String) = conn
+            .query_row("SELECT id, description FROM activities", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .expect("original row should survive rollback");
+        assert_eq!(row, ("old".to_string(), "existing".to_string()));
+    }
+}
+
 // ── Report History CRUD ──
 
 #[tauri::command]
@@ -378,6 +493,18 @@ fn backup_path(app_data_dir: &PathBuf) -> PathBuf {
     app_data_dir.join("moji.db.backup")
 }
 
+fn validate_database(path: &PathBuf) -> Result<(), String> {
+    let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| format!("Failed to open database for validation: {e}"))?;
+    let result: String = conn
+        .query_row("PRAGMA quick_check", [], |row| row.get(0))
+        .map_err(|e| format!("Failed to validate database: {e}"))?;
+    if result != "ok" {
+        return Err(format!("Database integrity check failed: {result}"));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn save_backup(
     db: tauri::State<'_, Database>,
@@ -388,17 +515,46 @@ pub fn save_backup(
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {e}"))?;
     let backup = backup_path(&app_data_dir);
-    let source = app_data_dir.join("moji.db");
 
-    fs::copy(&source, &backup)
-        .map_err(|e| format!("Failed to save backup: {e}"))?;
-
-    // vacuum the backup for size optimization
-    if let Ok(backup_conn) = Connection::open(&backup) {
-        let _ = backup_conn.execute_batch("PRAGMA journal_mode=DELETE; VACUUM;");
+    let conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
+    let temp_backup = app_data_dir.join("moji.db.backup.tmp");
+    if temp_backup.exists() {
+        fs::remove_file(&temp_backup)
+            .map_err(|e| format!("Failed to remove temporary backup: {e}"))?;
     }
 
-    let _ = db; // keep state alive
+    conn.backup(DatabaseName::Main, &temp_backup, None)
+        .map_err(|e| format!("Failed to create backup: {e}"))?;
+    if let Err(error) = validate_database(&temp_backup) {
+        let _ = fs::remove_file(&temp_backup);
+        return Err(error);
+    }
+
+    let previous_backup = app_data_dir.join("moji.db.backup.previous");
+    if previous_backup.exists() {
+        fs::remove_file(&previous_backup)
+            .map_err(|e| format!("Failed to remove previous backup: {e}"))?;
+    }
+    if backup.exists() {
+        fs::rename(&backup, &previous_backup)
+            .map_err(|e| format!("Failed to preserve previous backup: {e}"))?;
+    }
+    if let Err(error) = fs::rename(&temp_backup, &backup) {
+        let rollback_error = if previous_backup.exists() {
+            fs::rename(&previous_backup, &backup).err()
+        } else {
+            None
+        };
+        return Err(match rollback_error {
+            Some(rollback) => format!(
+                "Failed to finalize backup: {error}; failed to restore previous backup: {rollback}"
+            ),
+            None => format!("Failed to finalize backup: {error}"),
+        });
+    }
+    if previous_backup.exists() {
+        let _ = fs::remove_file(previous_backup);
+    }
     Ok(())
 }
 
@@ -408,7 +564,12 @@ pub fn load_backup(app_handle: tauri::AppHandle) -> Result<bool, String> {
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {e}"))?;
-    Ok(backup_path(&app_data_dir).exists())
+    let backup = backup_path(&app_data_dir);
+    if !backup.exists() {
+        return Ok(false);
+    }
+    validate_database(&backup)?;
+    Ok(true)
 }
 
 #[tauri::command]
@@ -421,18 +582,28 @@ pub fn restore_backup_to_db(
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {e}"))?;
     let backup = backup_path(&app_data_dir);
-    let source = app_data_dir.join("moji.db");
 
     if !backup.exists() {
         return Ok(0);
     }
 
-    // Restore backup over current DB
-    fs::copy(&backup, &source)
-        .map_err(|e| format!("Failed to restore backup: {e}"))?;
+    validate_database(&backup)?;
 
-    // Reopen connection count
-    let conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
+    let mut conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
+    conn.restore(
+        DatabaseName::Main,
+        &backup,
+        None::<fn(rusqlite::backup::Progress)>,
+    )
+    .map_err(|e| format!("Failed to restore backup: {e}"))?;
+
+    let integrity: String = conn
+        .query_row("PRAGMA quick_check", [], |row| row.get(0))
+        .map_err(|e| format!("Failed to validate restored database: {e}"))?;
+    if integrity != "ok" {
+        return Err(format!("Restored database integrity check failed: {integrity}"));
+    }
+
     let total: usize = conn
         .query_row("SELECT COUNT(*) FROM activities", [], |row| row.get(0))
         .map_err(|e| format!("Failed to count after restore: {e}"))?;

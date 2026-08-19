@@ -123,6 +123,10 @@ export function useScreenshot(options: UseScreenshotOptions = {}): UseScreenshot
   }, [captureNow, clearTimer, intervalMs, isRunning])
 
   useEffect(() => {
+    if (!autoStart) {
+      hasAutoStartedRef.current = false
+      return
+    }
     if (autoStart && !hasAutoStartedRef.current) {
       hasAutoStartedRef.current = true
       start()

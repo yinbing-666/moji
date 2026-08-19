@@ -47,11 +47,11 @@ export function AwAnalytics() {
   // 检测 ActivityWatch 是否在运行
   useEffect(() => {
     let cancelled = false
-    void dbAwHealth().then(info => {
+    void dbAwHealth({ host: settings.awHost, port: settings.awPort }).then(info => {
       if (!cancelled) setAwOnline(Boolean(info))
     })
     return () => { cancelled = true }
-  }, [])
+  }, [settings.awHost, settings.awPort])
 
   // 启动 ActivityWatch 并重新检测
   const handleLaunch = useCallback(async () => {
@@ -64,20 +64,20 @@ export function AwAnalytics() {
     // 等待服务起来后重新检测
     for (let i = 0; i < 10; i++) {
       await new Promise(resolve => setTimeout(resolve, 1000))
-      const info = await dbAwHealth()
+      const info = await dbAwHealth({ host: settings.awHost, port: settings.awPort })
       if (info) {
         setAwOnline(true)
         return
       }
     }
     setError('ActivityWatch 已启动但服务未就绪，请稍后重试')
-  }, [])
+  }, [settings.awHost, settings.awPort])
 
   const generate = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const r = await runAwAnalytics(period)
+      const r = await runAwAnalytics(period, { host: settings.awHost, port: settings.awPort })
       if (!r) throw new Error('分析失败，请确认 Python 与 ActivityWatch 可用')
       setResult(r)
     } catch (err) {
@@ -86,7 +86,7 @@ export function AwAnalytics() {
     } finally {
       setLoading(false)
     }
-  }, [period])
+  }, [period, settings.awHost, settings.awPort])
 
   return (
     <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
