@@ -6,6 +6,9 @@ dist/
 src-tauri/target/
 .target/
 
+# 内置 ActivityWatch server 二进制（27MB，不进 git，构建时从官方构建获取）
+src-tauri/vendor/activitywatch/aw-server-rust.exe
+
 # Logs
 *.log
 *.err.log
