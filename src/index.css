@@ -1,41 +1,52 @@
 @import 'tailwindcss';
 
-/* P0优化: 品牌色变量 - emerald → teal */
+/* 墨记视觉系统：中性工作台底色 + 克制的青绿色品牌色。 */
 @theme {
-  --color-brand-50: #f0fdfa;
-  --color-brand-100: #ccfbf1;
-  --color-brand-200: #99f6e4;
-  --color-brand-300: #5eead4;
-  --color-brand-400: #2dd4bf;
-  --color-brand-500: #14b8a6;
-  --color-brand-600: #0d9488;
-  --color-brand-700: #0f766e;
-  --color-brand-800: #115e59;
-  --color-brand-900: #134e4a;
+  --color-brand-50: #eef8f6;
+  --color-brand-100: #d6eeea;
+  --color-brand-200: #adddd5;
+  --color-brand-300: #79c5ba;
+  --color-brand-400: #45a99d;
+  --color-brand-500: #238f84;
+  --color-brand-600: #17776f;
+  --color-brand-700: #155f5a;
+  --color-brand-800: #164d49;
+  --color-brand-900: #153f3c;
+
+  --color-gray-50: #f7f8f7;
+  --color-gray-100: #eef1f0;
+  --color-gray-200: #dde2e0;
+  --color-gray-300: #c8cfcc;
+  --color-gray-400: #929c98;
+  --color-gray-500: #69736f;
+  --color-gray-600: #4d5753;
+  --color-gray-700: #38413e;
+  --color-gray-800: #252c29;
+  --color-gray-900: #171c1a;
 
   --color-surface: #ffffff;
-  --color-sidebar: #fafafa;
-  --color-app-canvas: #fafafa;
+  --color-sidebar: #eef3f1;
+  --color-app-canvas: #f3f6f5;
 
   /* P1优化: 字号层级系统 - 替代原来的text-sm/text-base单一体系 */
-  --text-h1: 1.875rem;    /* 30px - 页面主标题 */
-  --text-h2: 1.5rem;      /* 24px - 区块标题 */
-  --text-h3: 1.25rem;     /* 20px - 子标题 */
+  --text-h1: 1.625rem;    /* 26px - 页面主标题 */
+  --text-h2: 1.25rem;     /* 20px - 区块标题 */
+  --text-h3: 1rem;        /* 16px - 子标题 */
   --text-body: 1rem;      /* 16px - 正文 */
   --text-sm: 0.875rem;    /* 14px - 辅助文字 */
   --text-xs: 0.75rem;     /* 12px - 标签/注释 */
   --text-2xs: 0.6875rem;  /* 11px - 极小标注 */
 
   /* P1优化: 圆角层级系统 */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-2xl: 20px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
 
   /* P1优化: 阴影层级系统（删除原shadow-soft） */
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-elevated: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.03);
+  --shadow-card: 0 1px 2px rgb(23 28 26 / 0.06), 0 8px 22px rgb(23 28 26 / 0.035);
+  --shadow-elevated: 0 4px 10px rgb(23 28 26 / 0.08), 0 14px 34px rgb(23 28 26 / 0.06);
 }
 
 /* 全局基础样式 */
@@ -49,23 +60,29 @@ html {
 }
 
 html.dark {
-  --color-surface: #18181b;
-  --color-sidebar: #111113;
-  --color-app-canvas: #09090b;
-  --color-brand-50: #0d2d29;
-  --color-brand-100: #13423c;
-  --color-brand-200: #1a5b53;
-  --color-brand-300: #238277;
-  --color-gray-50: #202024;
-  --color-gray-100: #27272a;
-  --color-gray-200: #3f3f46;
-  --color-gray-300: #52525b;
-  --color-gray-400: #a1a1aa;
-  --color-gray-500: #a1a1aa;
-  --color-gray-600: #d4d4d8;
-  --color-gray-700: #e4e4e7;
-  --color-gray-800: #f4f4f5;
-  --color-gray-900: #fafafa;
+  --color-surface: #171c1a;
+  --color-sidebar: #0f1412;
+  --color-app-canvas: #0c100e;
+  --color-brand-50: #102b27;
+  --color-brand-100: #163a35;
+  --color-brand-200: #1f514a;
+  --color-brand-300: #2d7168;
+  --color-brand-400: #3f958a;
+  --color-brand-500: #34a597;
+  --color-brand-600: #238f84;
+  --color-brand-700: #1c756d;
+  --color-brand-800: #19615b;
+  --color-brand-900: #164e4a;
+  --color-gray-50: #1a201e;
+  --color-gray-100: #222927;
+  --color-gray-200: #303936;
+  --color-gray-300: #47524e;
+  --color-gray-400: #89938f;
+  --color-gray-500: #a3aca8;
+  --color-gray-600: #bbc4c0;
+  --color-gray-700: #d1d8d5;
+  --color-gray-800: #e4e9e7;
+  --color-gray-900: #f4f7f5;
   --color-indigo-50: #24233f;
   --color-indigo-100: #34315f;
   --color-orange-50: #352116;
@@ -84,20 +101,20 @@ html.dark {
   --color-red-400: #a43f4d;
   --color-teal-100: #134e4a;
   --color-teal-200: #16675f;
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.32), 0 1px 2px rgba(0,0,0,0.24);
-  --shadow-elevated: 0 8px 18px rgba(0,0,0,0.32), 0 3px 8px rgba(0,0,0,0.22);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 24px rgb(0 0 0 / 0.14);
+  --shadow-elevated: 0 8px 18px rgb(0 0 0 / 0.3), 0 18px 42px rgb(0 0 0 / 0.18);
 }
 
 body {
   margin: 0;
-  background-color: var(--color-app-canvas);
+  background: var(--app-bg, var(--color-app-canvas));
   color: var(--color-gray-900);
 }
 
 html.dark .text-brand-600,
 html.dark .text-brand-700,
 html.dark .text-brand-800 {
-  color: #5eead4;
+  color: #70d5c9;
 }
 
 html.dark .bg-white {
@@ -139,13 +156,13 @@ html.dark .bg-teal-50\/30 { background-color: rgb(16 45 42 / 0.3); }
 
 /* 品牌色文本选区，弱化默认浏览器蓝 */
 ::selection {
-  background-color: #99f6e4;
-  color: #134e4a;
+  background-color: #adddd5;
+  color: #153f3c;
 }
 
 /* 键盘导航焦点环（仅 focus-visible，不打扰鼠标点击） */
 :focus-visible {
-  outline: 2px solid rgb(20 184 166 / 0.55);
+  outline: 2px solid rgb(35 143 132 / 0.55);
   outline-offset: 2px;
 }
 

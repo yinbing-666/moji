@@ -5,7 +5,7 @@
 
 ## 当前阶段（2026-08-19）
 
-视觉（多模态）模型已彻底移除，识别链路改为「UIA 窗口文本 → 纯文本模型」；识别准确度、CORS、SQLite 持久化三项关键问题均已修复并验证。当前已完成稳定性审查与报告/可视化收尾，覆盖本地日期、采集生命周期、隐私过滤、备份恢复、ActivityWatch 安装包资源、报告质量评分、打印/PDF、15 分钟时间轴和跟随系统的深浅色主题。
+视觉（多模态）模型已彻底移除，识别链路改为「UIA 窗口文本 → 纯文本模型」；同时增加不依赖 LLM 或 ActivityWatch 的本地采集与固定格式报告。当前已完成稳定性审查与报告/可视化收尾，覆盖本地日期、采集生命周期、隐私过滤、备份恢复、报告质量评分、打印/PDF、15 分钟时间轴、跟随系统主题和无 LLM 模式。
 
 ## 已完成
 
@@ -23,7 +23,7 @@
 - [x] SQLite 存储层：`db_*` 命令 + 建表 + `rusqlite` + localStorage→SQLite 迁移
 - [x] 系统检测：`get_foreground_window` / `get_idle_seconds` / `is_screen_locked` / `diagnose_db`
 - [x] 备份 / 恢复：`save_backup` / `load_backup` / `restore_backup_to_db`
-- [x] ActivityWatch 数据源：`aw_fetch_events` / `aw_health`（零 API 费用、秒级窗口时间线）
+- [x] 可选 ActivityWatch 效率分析：`aw_fetch_events` / `aw_health`（零 API 费用、秒级窗口时间线）
 - [x] 系统托盘：关闭主窗口时隐藏到托盘，支持重新显示和退出
 
 ### 阶段 2 — 报告与可视化收尾
@@ -33,6 +33,8 @@
 - [x] 报告打印 / PDF：调用系统打印对话框，打印样式隐藏控制区并完整展开正文
 - [x] 窄屏布局：小于 640px 时侧栏缩为 64px 图标栏，报告控件和模板编辑器不再被裁切
 - [x] 三档主题：默认跟随 Windows 系统主题，也可强制浅色或深色；背景预设和打印样式同步适配
+- [x] 视觉系统收敛：背景皮肤同时作用于应用画布和侧栏，统一中性色板与语义色，并接入墨滴时间轨迹 Logo 和空状态标识
+- [x] 两种数据模式：有 LLM 使用窗口文本分析；无 LLM 使用本地窗口采集与固定格式 Markdown 报告，不依赖 ActivityWatch
 
 ## 近期重大变更（2026-08 中旬）
 
@@ -79,7 +81,7 @@
 ### 7. 稳定性与数据一致性修复（2026-08-19）
 
 - 日期筛选统一使用本地时区日期键，修复 UTC 跨日导致的今日统计和日报错日。
-- UIA 连续活动按采集间隔和活动结束时间去重、累计时长；切换到纯 AW 模式时停止窗口采集，切回后可按设置重新自动启动。
+- UIA 连续活动按采集间隔和活动结束时间去重、累计时长；切换两种数据模式时按当前模式控制采集生命周期。
 - 应用、标题和关键词排除项在 Rust 枚举窗口阶段统一过滤，开启缩略图时也不会先截取排除窗口。
 - localStorage 有明确状态时不再被 SQLite 旧数据覆盖；localStorage 缺失时可从 SQLite 恢复活动和报告历史，备份恢复后同步刷新两类数据。
 - SQLite 备份和恢复改用 online backup API，诊断增加 `PRAGMA quick_check`；SQLite 写入失败会保留 localStorage 数据并输出错误。
@@ -116,6 +118,10 @@
 ## 最近验证
 
 - 2026-08-19 主题验证：默认 `system` 可随系统颜色偏好实时切换，强制浅色/深色不受系统偏好影响并可刷新恢复；Edge 在 1280×800 和 390×844 下验证四个页面无横向溢出，深色打印为白底黑字；`npm run build`、`cargo check --locked`、`cargo test --locked` 和 5 个真实桌面忽略测试全部通过，NSIS 安装包已重新构建。
+- 2026-08-19 视觉系统验证：浅色/深色下 plain、mint、sky、graphite 四套皮肤均同步改变应用画布与侧栏；设置页预览与实际皮肤一致；桌面和 390×844 四页面无横向溢出，Logo 与空状态正常渲染，控制台无新增错误；`npm run build`、`git diff --check` 通过。
+- 2026-08-19 Logo 资源复核：采用用户提供的第 3 张墨滴时间环图，去白底并保留透明边距后接入侧栏、时间轴空状态和 favicon；浅色/深色桌面与 390×844 页面均正常渲染，`npm run build`、`git diff --check` 通过。
+- 2026-08-19 桌面打包验证：补充透明 PNG Logo 后，`npm run tauri build` 成功生成 release 可执行文件与 NSIS 安装包；`cargo test --locked` 通过（4 passed，5 ignored），安装包内含 ActivityWatch 分析资源。
+- 2026-08-19 无 LLM 验证：无 API 配置时本地模式采集按钮可用并可刷新保持；标准/简洁/技术/OKR 四种固定格式均生成成功并写入历史；ActivityWatch 效率分析默认收起且明确为可选；有 LLM 模式仍保留 AI 报告入口。390×844 下设置页无横向溢出，`npm run build`、`cargo check --locked`、`cargo test --locked`、5 个真实桌面忽略测试和 `git diff --check` 均通过。
 - 2026-08-19：`tsc --noEmit --pretty false`、`npm run build`、`cargo check --locked`、`cargo test --locked`、Markdown 导入与时长归一化断言、`git diff --check` 均通过。
 - 2026-08-19 补充：活动状态 ref 在单条写入、AW 批量同步和 SQLite 恢复路径同步更新；启动同步对变化快照重试并合并新记录；AW 同步增加互斥保护；Markdown 紧凑/详细格式导入均有断言；`npm run build`、`cargo check --locked`、`cargo test --locked`、`git diff --check` 复验通过。
 - 2026-08-19 模板与桌面验证：报告页模板选择/自定义 CRUD/生成注入已接通；5 个真实桌面 Rust 忽略测试全部通过；Tauri NSIS 包构建成功（`target/release/bundle/nsis/墨记_0.1.0_x64-setup.exe`），release 资源目录含 ActivityWatch 分析脚本；打包脚本离线 demo 生成 JSON/Markdown/HTML 全部成功。

@@ -44,7 +44,7 @@ interface Settings {
   excludedApps: string[]
   excludedTitlePatterns: string[]
   saveScreenshotThumbnails: boolean
-  dataSource: 'window_text' | 'aw' | 'both'
+  dataSource: 'llm' | 'local'
   awHost: string
   awPort: number
   awSyncMinutes: number
@@ -56,7 +56,7 @@ interface Settings {
 | `apiKey` | OpenAI 兼容接口密钥，仅保存在本机 |
 | `intervalSeconds` | 采集间隔，最小 10 秒 |
 | `maxWindowsPerCapture` | 每轮最多进入 AI 分析的窗口数，默认 3，范围 1-8 |
-| `autoStart` | 应用打开后是否自动开始窗口文本采集 |
+| `autoStart` | 应用打开后是否自动开始窗口采集 |
 | `baseUrl` | OpenAI 兼容接口地址 |
 | `excludedKeywords` | 命中后跳过的应用、窗口或进程关键词 |
 | `saveScreenshotThumbnails` | 是否保存压缩截图缩略图，默认关闭 |
@@ -105,7 +105,7 @@ interface CapturedWindow {
 
 ### `xiaohei-settings`
 
-保存用户设置，包括 API Key、Base URL、模型名、采集间隔、每轮分析窗口数、自动启动、数据源、ActivityWatch 地址、隐私排除规则和缩略图开关。
+保存用户设置，包括 API Key、Base URL、模型名、采集间隔、每轮窗口数、自动启动、LLM/本地模式、ActivityWatch 分析地址、隐私排除规则和缩略图开关。
 
 ### `moji-report-history`
 
@@ -152,7 +152,8 @@ interface CapturedWindow {
 读取活动
   -> 按指定日期筛选活动
   -> 取有描述的记录
-  -> 调用文本模型生成 Markdown
+  -> 有 LLM 模式调用文本模型生成 Markdown
+  -> 无 LLM 模式使用固定格式生成 Markdown
   -> 写入 moji-report-history
   -> 支持复制或下载
 ```

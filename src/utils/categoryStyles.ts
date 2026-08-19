@@ -14,13 +14,13 @@ export interface CategoryVisual {
   icon: string
 }
 
-/** 去AI味优化：使用低饱和度莫兰迪色系，避免标准彩虹色 */
+/** 低饱和度分类色，保证区分度但不抢占品牌色层级。 */
 export const CATEGORY_VISUALS: Record<Activity['category'], CategoryVisual> = {
   dev: {
     label: '开发',
     badge: 'bg-indigo-50 text-indigo-700 ring-indigo-100',
     dot: 'bg-indigo-500',
-    hex: '#6366f1',           // 靛蓝色，更科技感
+    hex: '#5b68a5',
     iconBg: 'from-indigo-500 to-blue-600',
     icon: 'Dev',              // 用英文替代emoji 💻
   },
@@ -28,7 +28,7 @@ export const CATEGORY_VISUALS: Record<Activity['category'], CategoryVisual> = {
     label: '会议',
     badge: 'bg-orange-50 text-orange-700 ring-orange-100',
     dot: 'bg-orange-500',
-    hex: '#ea580c',           // 深橙色，更醒目但不刺眼
+    hex: '#b66f45',
     iconBg: 'from-orange-500 to-red-500',
     icon: 'Meet',             // 用英文替代emoji 🎥
   },
@@ -36,7 +36,7 @@ export const CATEGORY_VISUALS: Record<Activity['category'], CategoryVisual> = {
     label: '文档',
     badge: 'bg-sky-50 text-sky-700 ring-sky-100',
     dot: 'bg-sky-500',
-    hex: '#0284c7',           // 天空蓝，与品牌青错开色相
+    hex: '#3f7f98',
     iconBg: 'from-sky-500 to-blue-600',
     icon: 'Doc',              // 用英文替代emoji 📄
   },
@@ -44,7 +44,7 @@ export const CATEGORY_VISUALS: Record<Activity['category'], CategoryVisual> = {
     label: '沟通',
     badge: 'bg-pink-50 text-pink-700 ring-pink-100',
     dot: 'bg-pink-500',
-    hex: '#ec4899',           // 玫红色，区分度高
+    hex: '#a65a72',
     iconBg: 'from-pink-500 to-rose-500',
     icon: 'Chat',             // 用英文替代emoji 💬
   },
@@ -52,7 +52,7 @@ export const CATEGORY_VISUALS: Record<Activity['category'], CategoryVisual> = {
     label: '其他',
     badge: 'bg-zinc-50 text-zinc-600 ring-zinc-100',
     dot: 'bg-zinc-400',
-    hex: '#71717a',           // 中性灰，不抢眼
+    hex: '#6f7774',
     iconBg: 'from-zinc-400 to-zinc-500',
     icon: 'Other',            // 用英文替代emoji 🧩
   },

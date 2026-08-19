@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Activity } from '../stores/activityStore'
+import mojiMark from '../assets/moji-mark-v2.png'
 import { categoryVisual } from '../utils/categoryStyles'
 import { formatDuration } from '../utils/format'
 import { localDateKey } from '../utils/date'
@@ -95,7 +96,7 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
     <>
       <section className="mb-6 grid gap-3 sm:grid-cols-3">
         {/* 今日总时长 - 品牌色主指标卡（页面唯一强色，克制而聚焦） */}
-        <div className="rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50/70 to-white p-5 shadow-card">
+        <div className="rounded-xl border border-brand-200 bg-white p-4 shadow-card">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <svg className="h-3.5 w-3.5 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -103,7 +104,7 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
               </svg>
               <p className="text-xs font-medium text-brand-700">今日投入</p>
             </div>
-            <span className="rounded-full bg-white px-2 py-0.5 text-2xs tabular-nums text-gray-500 ring-1 ring-brand-100">{stats.todayCount} 条记录</span>
+            <span className="rounded-full bg-brand-50 px-2 py-0.5 text-2xs tabular-nums text-gray-500 ring-1 ring-brand-100">{stats.todayCount} 条记录</span>
           </div>
           <p className="mt-2 text-h2 font-bold tabular-nums text-brand-700">
             {totalDurationText ?? '—'}
@@ -169,7 +170,13 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
         </div>
 
         {/* 对数缩放让低频活动也可辨；15 分钟模式在窄屏横向滚动。 */}
-        <div className="overflow-x-auto pb-1">
+        <div className="relative overflow-x-auto pb-1">
+          {todayActivities.length === 0 && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 text-xs text-gray-400">
+              <img src={mojiMark} alt="" className="h-7 w-7 opacity-35 grayscale" />
+              <span>等待第一条工作记录</span>
+            </div>
+          )}
           <div
             className="flex h-16 items-end gap-0.5 overflow-hidden"
             style={{ minWidth: timelineMinutes === 15 ? '720px' : '420px' }}

@@ -1,7 +1,7 @@
 /**
  * 墨记活动状态管理（Context Store）
  *
- * 数据源类型：'window_text' | 'aw'（旧值 'screenshot' 已迁移为 'window_text'，识别基于窗口文本不再截图）
+ * 数据模式：'llm' | 'local'（旧值 window_text / aw / both 在读取设置时自动迁移）
  */
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import {
@@ -18,6 +18,7 @@ import {
 } from '../utils/db'
 import { hasStoredReportHistory, loadReportHistory, removeReportHistoryItem, saveReportHistory, type ReportHistoryItem } from '../utils/reportHistory'
 import { localDateKey } from '../utils/date'
+import { generateLocalDailyReport } from '../utils/localReport'
 import { getTemplateDescription, loadCustomTemplates } from '../utils/templates'
 
 export type BackgroundPreset = 'plain' | 'mint' | 'sky' | 'graphite' | 'custom'
@@ -42,8 +43,8 @@ export interface Activity {
   durationSeconds?: number
 }
 
-/* DataSource 类型：窗口文本识别（UIA）、ActivityWatch、或双源并行（both） */
-export type DataSource = 'window_text' | 'aw' | 'both'
+/* 数据模式：LLM 窗口识别，或本地确定性分类（无需 LLM / ActivityWatch） */
+export type DataSource = 'llm' | 'local'
 
 export interface Settings {
   apiKey: string
@@ -113,7 +114,7 @@ const DEFAULT_SETTINGS: Settings = {
   excludedTitlePatterns: [],
   saveScreenshotThumbnails: false,
   appearance: { themeMode: 'system', backgroundPreset: 'plain' },
-  dataSource: 'window_text',
+  dataSource: 'llm',
   awHost: '127.0.0.1',
   awPort: 5600,
   awSyncMinutes: 5,
@@ -314,8 +315,8 @@ function loadSettings(): Settings {
         : DEFAULT_SETTINGS.excludedTitlePatterns,
       saveScreenshotThumbnails: Boolean(saved.saveScreenshotThumbnails),
       appearance: normalizeAppearance(saved.appearance),
-      // 旧值 'screenshot' 迁移为 'window_text'（识别已改为窗口文本，不再截图）
-      dataSource: saved.dataSource === 'both' ? 'both' : saved.dataSource === 'aw' ? 'aw' : 'window_text',
+      // 兼容旧配置：window_text / both 代表有 LLM，aw 代表无 LLM。
+      dataSource: saved.dataSource === 'aw' || saved.dataSource === 'local' ? 'local' : 'llm',
       awHost: typeof saved.awHost === 'string' && saved.awHost.trim() ? saved.awHost.trim() : DEFAULT_SETTINGS.awHost,
       awPort: Number.isFinite(saved.awPort) && saved.awPort > 0 ? Math.round(saved.awPort) : DEFAULT_SETTINGS.awPort,
       awSyncMinutes: Number.isFinite(saved.awSyncMinutes) && saved.awSyncMinutes > 0 ? Math.round(saved.awSyncMinutes) : DEFAULT_SETTINGS.awSyncMinutes,
@@ -477,7 +478,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       id: createActivityId(),
       timestamp: new Date().toISOString(),
     }
-    // 双源并行去重：窗口覆盖至少一个采集周期，确保默认 5 分钟间隔也能累计时长。
+    // 连续窗口去重：覆盖至少一个采集周期，确保默认 5 分钟间隔也能累计时长。
     // UIA 采集（无 durationSeconds）命中去重时，视为同一活动持续了一个采集周期，
     // 把间隔累加到已有记录的时长上，让时间轴能反映真实停留时间。
     const ts = Date.parse(newActivity.timestamp)
@@ -642,27 +643,31 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
 
   /* P1优化: 生成日报 */
   const generateDailyReport = useCallback(async (date: string, templateKey = 'standard') => {
+    setIsGeneratingReport(true)
     try {
-      const { generateReport } = await import('../utils/ai')
-      setIsGeneratingReport(true)
-      
       // 筛选指定日期的活动
       const dayActivities = activitiesRef.current.filter(a => localDateKey(a.timestamp) === date)
-      const templateDescription = getTemplateDescription(templateKey, loadCustomTemplates())
-      
-      const reportContent = await generateReport(
-        dayActivities.map(a => ({
-          timestamp: a.timestamp,
-          description: a.description,
-          category: a.category,
-          app_name: a.app,
-        })),
-        'daily',
-        settings.apiKey,
-        settings.baseUrl,
-        settings.textModel,
-        templateDescription,
-      )
+      let reportContent: string
+
+      if (settings.dataSource === 'local') {
+        reportContent = generateLocalDailyReport(activitiesRef.current, date, templateKey)
+      } else {
+        const { generateReport } = await import('../utils/ai')
+        const templateDescription = getTemplateDescription(templateKey, loadCustomTemplates())
+        reportContent = await generateReport(
+          dayActivities.map(a => ({
+            timestamp: a.timestamp,
+            description: a.description,
+            category: a.category,
+            app_name: a.app,
+          })),
+          'daily',
+          settings.apiKey,
+          settings.baseUrl,
+          settings.textModel,
+          templateDescription,
+        )
+      }
 
       // 保存到历史记录并展示在界面上（下载改为手动触发，不再自动弹下载框）
       const { addReportHistoryItem } = await import('../utils/reportHistory')
@@ -672,7 +677,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsGeneratingReport(false)
     }
-  }, [settings.apiKey, settings.baseUrl, settings.textModel])
+  }, [settings.apiKey, settings.baseUrl, settings.dataSource, settings.textModel])
 
   const viewReport = useCallback((item: ReportHistoryItem) => {
     setLastReport(item)

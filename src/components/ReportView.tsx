@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Activity } from '../stores/activityStore'
 import { useActivityStore } from '../stores/activityStore'
 import { categoryVisual } from '../utils/categoryStyles'
@@ -28,6 +28,7 @@ interface ReportViewProps {
 
 export function ReportView({ activities }: ReportViewProps) {
   const {
+    settings,
     isGeneratingReport,
     generateDailyReport,
     lastReport,
@@ -44,6 +45,14 @@ export function ReportView({ activities }: ReportViewProps) {
   const [templateName, setTemplateName] = useState('')
   const [templatePrompt, setTemplatePrompt] = useState('')
   const [templateError, setTemplateError] = useState<string | null>(null)
+  const isLocalMode = settings.dataSource === 'local'
+  const effectiveTemplate = isLocalMode && selectedTemplate.startsWith('custom:') ? 'standard' : selectedTemplate
+
+  useEffect(() => {
+    if (isLocalMode && selectedTemplate.startsWith('custom:')) {
+      setSelectedTemplate('standard')
+    }
+  }, [isLocalMode, selectedTemplate])
 
   const templateLabel = (templateKey: string) => {
     const builtin = BUILTIN_TEMPLATES.find(template => template.value === templateKey)
@@ -189,7 +198,7 @@ export function ReportView({ activities }: ReportViewProps) {
   /* P1优化: 报告生成处理 */
   const handleGenerateReport = async () => {
     try {
-      await generateDailyReport(reportDate, selectedTemplate)
+      await generateDailyReport(reportDate, effectiveTemplate)
     } catch (err) {
       console.error('报告生成失败:', err)
     }
@@ -198,13 +207,18 @@ export function ReportView({ activities }: ReportViewProps) {
   /* P1优化: 报告页面布局 - 使用层级化卡片系统 */
   return (
     <div className="report-print-root space-y-6">
-      {/* 效率分析(基于 ActivityWatch Analytics Skill,任何数据源模式可用) */}
+      {/* 可选效率分析，不影响两种核心采集模式 */}
       <div className="report-no-print">
         <AwAnalytics />
       </div>
 
       {/* 报告控制栏 - 层级2：标准卡片 */}
       <section className="report-no-print rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
+        {isLocalMode && (
+          <div className="mb-3 rounded-lg border border-teal-200 bg-teal-50/50 px-3 py-2 text-xs text-teal-800">
+            当前为无 LLM 模式，报告按固定格式在本地生成，不会调用 API。
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="report-date" className="text-xs font-medium text-gray-500">选择日期</label>
@@ -218,10 +232,10 @@ export function ReportView({ activities }: ReportViewProps) {
           </div>
 
           <div className="flex min-w-0 flex-col gap-1.5">
-            <label htmlFor="report-template" className="text-xs font-medium text-gray-500">报告模板</label>
+            <label htmlFor="report-template" className="text-xs font-medium text-gray-500">{isLocalMode ? '报告格式' : '报告模板'}</label>
             <select
               id="report-template"
-              value={selectedTemplate}
+              value={effectiveTemplate}
               onChange={(e) => setSelectedTemplate(e.target.value)}
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
             >
@@ -230,7 +244,7 @@ export function ReportView({ activities }: ReportViewProps) {
                   <option key={template.value} value={template.value}>{template.label}：{template.description}</option>
                 ))}
               </optgroup>
-              {customTemplates.length > 0 && (
+              {!isLocalMode && customTemplates.length > 0 && (
                 <optgroup label="自定义模板">
                   {customTemplates.map(template => (
                     <option key={template.id} value={`custom:${template.id}`}>{template.name}</option>
@@ -250,20 +264,20 @@ export function ReportView({ activities }: ReportViewProps) {
                 : 'bg-brand-600 text-white hover:bg-brand-700'
             }`}
           >
-            {isGeneratingReport ? '生成中...' : 'AI 生成报告'}
+            {isGeneratingReport ? '生成中...' : isLocalMode ? '生成本地报告' : 'AI 生成报告'}
           </button>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
-          <span className="text-xs text-gray-500">当前：{templateLabel(selectedTemplate)}</span>
-          <button
+          <span className="text-xs text-gray-500">当前：{templateLabel(effectiveTemplate)}</span>
+          {!isLocalMode && <button
             type="button"
             onClick={openNewTemplateEditor}
             className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
           >
             新建自定义模板
-          </button>
-          {selectedTemplate.startsWith('custom:') && (
+          </button>}
+          {!isLocalMode && selectedTemplate.startsWith('custom:') && (
             <>
               <button
                 type="button"

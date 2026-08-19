@@ -66,6 +66,7 @@ export function useAutoCapture() {
     && settings.baseUrl.trim()
     && settings.textModel.trim(),
   )
+  const localMode = settings.dataSource === 'local'
 
   const captureAllowedWindows = useCallback(async (): Promise<ScreenshotCaptureResult> => {
     // 锁屏或长时间空闲时跳过，避免浪费 API 与产生无意义记录
@@ -124,8 +125,8 @@ export function useAutoCapture() {
   const handleCapture = useCallback(async (result: ScreenshotCaptureResult) => {
     if (analyzingRef.current) return
 
-    if (!hasAiConfig) {
-      // 配置缺失是系统状态，不写入活动数据流（避免污染时间轴和统计），只记录日志
+    if (!localMode && !hasAiConfig) {
+      // 有 LLM 模式配置缺失时不写入活动数据流，避免污染时间轴和统计。
       console.warn('墨记：AI 配置不完整，本轮采集已跳过分析')
       return
     }
@@ -147,6 +148,22 @@ export function useAutoCapture() {
           | { ok: false; capturedWindow: CapturedWindow; error: string }
         > => {
           try {
+            if (localMode) {
+              const local = classifyLocally(capturedWindow.process_name, capturedWindow.title)
+              const thumbnail = settings.saveScreenshotThumbnails && capturedWindow.image_base64
+                ? await compressBase64(capturedWindow.image_base64, 320)
+                : undefined
+              return {
+                ok: true,
+                capturedWindow,
+                category: local.category,
+                app: local.app || capturedWindow.process_name,
+                title: local.title || capturedWindow.title,
+                description: local.description,
+                screenshotBase64: thumbnail,
+              }
+            }
+
             // 读取窗口内 UIA 文本（本地、只读，替代截图）
             const windowText = await dbReadWindowText(capturedWindow.hwnd, 2000)
 
@@ -209,20 +226,20 @@ export function useAutoCapture() {
       analyzingRef.current = false
       setIsAnalyzing(false)
     }
-  }, [hasAiConfig, settings.apiKey, settings.baseUrl, settings.textModel, settings.saveScreenshotThumbnails, addActivity, setIsAnalyzing])
+  }, [hasAiConfig, localMode, settings.apiKey, settings.baseUrl, settings.textModel, settings.saveScreenshotThumbnails, addActivity, setIsAnalyzing])
 
   const screenshot = useScreenshot({
     intervalSeconds: settings.intervalSeconds,
-    // 仅在启用了窗口文本采集(AW 模式不启动)时自动采集
-    autoStart: Boolean(settings.autoStart && hasAiConfig && settings.dataSource !== 'aw'),
+    // 有 LLM 和无 LLM 模式都使用墨记自己的窗口采集；无 LLM 只跳过 UIA/网络分析。
+    autoStart: Boolean(settings.autoStart && (localMode || hasAiConfig)),
     capture: captureAllowedWindows,
     onCapture: handleCapture,
   })
 
-  // 切换到纯 AW 模式或 AI 配置失效时，停止已经运行中的窗口采集计时器。
+  // 切换到有 LLM 且配置失效时，停止已经运行中的窗口采集计时器。
   useEffect(() => {
-    if (settings.dataSource === 'aw' || !hasAiConfig) screenshot.stop()
-  }, [hasAiConfig, settings.dataSource, screenshot.stop])
+    if (!localMode && !hasAiConfig) screenshot.stop()
+  }, [hasAiConfig, localMode, screenshot.stop])
 
   return screenshot
 }

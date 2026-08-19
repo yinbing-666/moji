@@ -7,15 +7,14 @@
 
 墨记 = 本地 Tauri 2 桌面工作复盘工具（React 19 + TypeScript + Tailwind 4 + Rust）。跟踪用户工作活动并生成日报。
 
-## 二、当前架构（三数据源模式）
+## 二、当前架构（两种数据模式）
 
-`dataSource` 三态：`window_text | aw | both`
+`dataSource` 两态：`llm | local`
 
 | 模式 | 行为 |
 |---|---|
-| `window_text` | Rust UIA 读窗口文本 → 用户配置的纯文本模型分析 → 活动记录 |
-| `aw` | 同步 ActivityWatch 时间线 → 关键词分类 → 记录 |
-| `both` | 两套并行采集，`addActivity` 按采集间隔和活动结束时间去重 |
+| `llm` | Rust UIA 读窗口文本 → 用户配置的纯文本模型分析 → 活动记录与 AI 报告 |
+| `local` | 墨记枚举窗口 → 本地进程/标题规则分类 → 固定格式 Markdown 报告，不调用网络 |
 
 关键链路：
 - **识别**：`screenshot.rs` 窗口枚举（captureImages=false 不截图）→ `uia.rs read_window_text`（UIA 文本，噪声 denylist）→ `ai.ts analyzeWindowText`（URL 提取 + 本地预判 + 强 prompt）→ Rust `ai.rs chat_completions`（reqwest 代理，绕过 CORS，`enable_thinking:false`）
@@ -25,15 +24,16 @@
 ## 三、关键文件职责
 
 ```
-src/App.tsx                  首页/导航/双源并行逻辑 + 窄屏图标侧栏
+src/App.tsx                  首页/导航/两种数据模式 + 窄屏图标侧栏
 src/components/TodayOverview 今日统计 + 30/15 分钟时间轴（对数缩放）+ 分类分布
 src/components/AwAnalytics   效率分析卡片（AW Skill 集成，任何数据源可用）
-src/components/Settings      P1 表单版；数据源三选、采集行为、隐私排除、数据库备份
+src/components/Settings      P1 表单版；两种数据模式、采集行为、隐私排除、数据库备份
 src/components/ReportView    报告页（模板、质量评分、打印/PDF、历史）
 src/stores/activityStore     状态 + addActivity 去重 + SQLite 双写
 src/utils/ai.ts              文本模型调用（invoke Rust 代理）+ classifyLocally 降级
 src/utils/db.ts              Tauri 命令封装（含 runAwAnalytics/openAwReport/launchActivitywatch）
 src/utils/reportQuality.ts   报告质量评分（记录数、时间跨度、分类多样性）
+src/utils/localReport.ts     无 LLM 固定格式日报生成
 src/utils/templates.ts       内置模板和自定义模板本地 CRUD
 src-tauri/src/aw_analytics.rs Python 脚本集成 + launch_activitywatch
 src-tauri/src/ai.rs          chat_completions 代理（enable_thinking:false）
@@ -72,6 +72,7 @@ $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=9222'; npm r
 - [x] 报告质量评分、系统打印 / PDF
 - [x] 15 分钟 96 格时间轴、具体活动悬停提示和窄屏图标侧栏
 - [x] 默认跟随系统的深浅色主题，可强制浅色/深色，背景预设与打印样式已适配
+- [x] 无 LLM 模式本地采集与固定格式日报；报告页按模式隐藏 AI 或自定义 Prompt 操作
 - [ ] K3 后续方案若再来，基于当前 src（git 干净）评审，先 tsc 验证
 
 ## 七、git 最近提交（上下文锚点）

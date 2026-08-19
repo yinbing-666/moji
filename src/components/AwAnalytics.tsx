@@ -33,7 +33,7 @@ function fmtDuration(seconds: number): string {
   return m > 0 ? `${h} 小时 ${m} 分钟` : `${h} 小时`
 }
 
-/** AW 效率分析(基于 ActivityWatch Analytics Skill,任何数据源模式可用) */
+/** 可选的 ActivityWatch 效率分析，不影响两种核心采集模式。 */
 export function AwAnalytics() {
   const { settings } = useActivityStore()
   const [period, setPeriod] = useState('today')
@@ -41,17 +41,21 @@ export function AwAnalytics() {
   const [result, setResult] = useState<AwAnalyticsResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [awOnline, setAwOnline] = useState<boolean | null>(null)
-  // 纯窗口文本模式默认收起（多数用户未安装 AW，避免警告横幅造成噪音）；AW/双源模式默认展开
-  const [expanded, setExpanded] = useState(settings.dataSource !== 'window_text')
+  // 效率分析是可选能力，默认收起，避免无 LLM 模式误以为必须安装 ActivityWatch。
+  const [expanded, setExpanded] = useState(false)
 
   // 检测 ActivityWatch 是否在运行
   useEffect(() => {
+    if (!expanded) {
+      setAwOnline(null)
+      return
+    }
     let cancelled = false
     void dbAwHealth({ host: settings.awHost, port: settings.awPort }).then(info => {
       if (!cancelled) setAwOnline(Boolean(info))
     })
     return () => { cancelled = true }
-  }, [settings.awHost, settings.awPort])
+  }, [expanded, settings.awHost, settings.awPort])
 
   // 启动 ActivityWatch 并重新检测
   const handleLaunch = useCallback(async () => {
@@ -98,7 +102,7 @@ export function AwAnalytics() {
       >
         <div>
           <h2 className="text-h3 font-semibold text-gray-900">效率分析</h2>
-          <p className="mt-0.5 text-xs text-gray-500">基于 ActivityWatch 数据离线计算（本地 Python，隐私聚合）</p>
+          <p className="mt-0.5 text-xs text-gray-500">可选：基于 ActivityWatch 数据离线计算，不影响本地日报采集</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="hidden rounded-full bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700 ring-1 ring-teal-200 sm:inline-flex">
@@ -120,7 +124,7 @@ export function AwAnalytics() {
       {awOnline === false && (
         <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
           <p className="text-xs text-amber-800">
-            未检测到 ActivityWatch（默认 127.0.0.1:5600）。
+            未检测到 ActivityWatch。此项为可选效率分析，不影响墨记采集和日报生成。
           </p>
           <button
             type="button"

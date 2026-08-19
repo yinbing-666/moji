@@ -1,6 +1,6 @@
 # AI 管道设计
 
-> 窗口文本分析 + 报告生成的当前实现。已移除视觉（多模态）模型，改用 UI Automation 文本 + 纯文本模型。
+> 有 LLM 模式使用窗口文本 + 纯文本模型；无 LLM 模式使用窗口元数据和固定格式本地报告。
 
 ## 架构
 
@@ -12,14 +12,16 @@ Rust 枚举可见窗口
   -> 根据 maxWindowsPerCapture 截断窗口列表
   -> （可选）截屏，仅在用户开启“保存截图缩略图”时
   -> Rust UI Automation 只读采集窗口内控件文本（Name + Value，跳过密码框）
-  -> 纯文本 LLM 分析（与报告生成共用同一模型；请求经 Rust `chat_completions` 代理，绕过浏览器 CORS）
+  -> 有 LLM：纯文本 LLM 分析（请求经 Rust `chat_completions` 代理，绕过浏览器 CORS）
+  -> 无 LLM：跳过 UIA 文本和网络请求，使用 `classifyLocally` 本地规则分类
   -> JSON { category, app, title, description }
   -> 写入 localStorage + SQLite
   -> UI 展示活动时间线
-  -> 用户触发报告生成（同一纯文本模型）
+  -> 用户触发报告生成
   -> 按指定本地日期筛选活动
   -> 选择内置或自定义模板；自定义模板可在报告页本地 CRUD
-  -> 将模板描述注入报告 prompt
+  -> 有 LLM：将模板描述注入报告 prompt
+  -> 无 LLM：`src/utils/localReport.ts` 按固定模板生成 Markdown
   -> Markdown
   -> 仅成功生成的报告进入正文和历史；配置、空记录、失败只显示为提示
   -> 保存到 moji-report-history（localStorage + SQLite）
@@ -133,7 +135,7 @@ interface Settings {
   excludedTitlePatterns: string[]
   saveScreenshotThumbnails: boolean
   appearance: Appearance
-  dataSource: 'window_text' | 'aw'
+  dataSource: 'llm' | 'local'
   awHost: string
   awPort: number
   awSyncMinutes: number
@@ -152,14 +154,14 @@ const DEFAULT_SETTINGS = {
   textModel: '<模型名>',
   excludedKeywords: ['Password', 'Token', 'Bank', '钱包', '验证码', '密钥'],
   saveScreenshotThumbnails: false,
-  dataSource: 'window_text',
+  dataSource: 'llm',
 }
 ```
 
 ## 旧配置迁移
 
 - `analysisModel` / `reportModel` 已合并为 `textModel`；加载旧设置时优先取 `textModel`，否则回退 `reportModel`。
-- 旧 `dataSource: 'screenshot'` 自动迁移为 `'window_text'`。
+- 旧 `dataSource: 'window_text'` / `'both'` 迁移为 `'llm'`；旧 `dataSource: 'aw'` 迁移为 `'local'`。
 
 ## 存储
 

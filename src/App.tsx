@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
-import { ActivityProvider, useActivityStore, type BackgroundPreset, type ThemeMode } from './stores/activityStore'
+import { ActivityProvider, useActivityStore, type ThemeMode } from './stores/activityStore'
 import { Settings } from './components/Settings'
 import { ActivityTimeline } from './components/ActivityTimeline'
 import { ReportView } from './components/ReportView'
 import { TodayOverview } from './components/TodayOverview'
 import { useAutoCapture } from './hooks/useAutoCapture'
+import mojiMark from './assets/moji-mark-v2.png'
+import { getAppearanceSkin } from './utils/appearance'
 import { categoryVisual } from './utils/categoryStyles'
 import { localDateKey } from './utils/date'
 
@@ -42,7 +44,7 @@ function PageHeader({ title, desc, children }: { title: string; desc?: string; c
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="text-h1 font-bold tracking-tight text-gray-900">{title}</h1>
+        <h1 className="text-h1 font-bold text-gray-900">{title}</h1>
         {desc && <p className="mt-1 text-sm text-gray-500">{desc}</p>}
       </div>
       {children}
@@ -116,7 +118,7 @@ function TimelinePage({ activities }: { activities: import('./stores/activitySto
 function ReportPage({ activities }: { activities: import('./stores/activityStore').Activity[] }) {
   return (
     <div className="mx-auto max-w-5xl px-8 py-8">
-      <PageHeader title="报告" desc="AI 日报与 ActivityWatch 效率分析" />
+      <PageHeader title="报告" desc="固定格式日报、AI 报告与可选效率分析" />
       <ReportView activities={activities} />
     </div>
   )
@@ -131,25 +133,8 @@ function SettingsPage() {
   )
 }
 
-const BG_GRADIENTS: Record<Exclude<ThemeMode, 'system'>, Record<BackgroundPreset, string>> = {
-  light: {
-    plain: '',
-    mint: 'linear-gradient(135deg, #d4f5e9 0%, #e8f5e9 50%, #f0f7f4 100%)',
-    sky: 'linear-gradient(135deg, #dceefb 0%, #e8f0fe 50%, #f0f4f8 100%)',
-    graphite: 'linear-gradient(135deg, #e8eaed 0%, #f1f3f4 50%, #f8f9fa 100%)',
-    custom: '',
-  },
-  dark: {
-    plain: '',
-    mint: 'linear-gradient(135deg, #102823 0%, #152520 50%, #18181b 100%)',
-    sky: 'linear-gradient(135deg, #102431 0%, #17232e 50%, #18181b 100%)',
-    graphite: 'linear-gradient(135deg, #18181b 0%, #202024 50%, #27272a 100%)',
-    custom: '',
-  },
-}
-
 function AppShell() {
-  const { settings, activities, syncFromAw, updateSettings, isAnalyzing } = useActivityStore()
+  const { settings, activities, updateSettings, isAnalyzing } = useActivityStore()
   const { isRunning, isCapturing, latestScreenshot, error, start, stop, captureNow } = useAutoCapture()
   const [page, setPage] = useState<Page>('dashboard')
   const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -160,9 +145,8 @@ function AppShell() {
     : themeMode
 
   const isConfigured = Boolean(settings.apiKey.trim() && settings.baseUrl.trim() && settings.textModel.trim())
-  // 双源并行:window_text / both 启用窗口文本采集,aw / both 启用 AW 同步
-  const windowTextEnabled = settings.dataSource !== 'aw'
-  const awEnabled = settings.dataSource !== 'window_text'
+  const localMode = settings.dataSource === 'local'
+  const captureConfigured = localMode || isConfigured
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
@@ -180,61 +164,42 @@ function AppShell() {
     root.dataset.themeMode = themeMode
   }, [resolvedTheme, themeMode])
 
-  // 同步背景到 CSS 变量
+  // 皮肤同时作用于应用画布与侧栏，避免左右区域割裂。
   useEffect(() => {
     const preset = settings.appearance?.backgroundPreset ?? 'plain'
-    const bg = preset === 'custom'
-      ? settings.appearance?.customBackground
-        ? resolvedTheme === 'dark'
-          ? `linear-gradient(rgb(9 9 11 / 0.52), rgb(9 9 11 / 0.52)), url(${settings.appearance.customBackground}) center / cover fixed`
-          : `url(${settings.appearance.customBackground}) center / cover fixed`
-        : ''
-      : BG_GRADIENTS[resolvedTheme][preset]
-    document.documentElement.style.setProperty('--app-bg', bg || 'var(--color-app-canvas)')
+    const skin = getAppearanceSkin(resolvedTheme, preset, settings.appearance?.customBackground)
+    const root = document.documentElement
+    root.style.setProperty('--app-bg', skin.canvas)
+    root.style.setProperty('--sidebar-bg', skin.sidebar)
   }, [resolvedTheme, settings.appearance])
-
-  // AW 模式：按配置间隔自动同步（无需 API Key）
-  useEffect(() => {
-    if (!awEnabled) return
-    void syncFromAw().catch(() => {})
-    const minutes = Math.max(1, settings.awSyncMinutes || 5)
-    const timer = window.setInterval(() => {
-      void syncFromAw().catch(() => {})
-    }, minutes * 60 * 1000)
-    return () => window.clearInterval(timer)
-  }, [awEnabled, settings.awSyncMinutes, syncFromAw])
 
   const handleCaptureToggle = () => {
     if (isRunning) {
       stop()
       return
     }
-    if (!windowTextEnabled) {
-      // 未启用窗口文本采集（纯 AW 模式）：手动触发一次同步
-      void syncFromAw().catch(() => {})
-      return
-    }
-    if (isConfigured) {
+    if (captureConfigured) {
       start()
     }
   }
 
-  const statusLabel = windowTextEnabled
-    ? (isAnalyzing ? '分析中' : isCapturing ? '采集中' : isRunning ? '运行中' : '已停止')
-    : (awEnabled ? 'AW 同步' : '已停止')
-  const statusActive = windowTextEnabled ? (isRunning || isAnalyzing) : awEnabled
+  const statusLabel = localMode
+    ? (isCapturing ? '本地采集中' : isRunning ? '本地运行中' : '已停止')
+    : (isAnalyzing ? 'LLM 分析中' : isCapturing ? '采集中' : isRunning ? '运行中' : '已停止')
+  const statusActive = isRunning || isAnalyzing
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--app-bg)' }}>
       {/* 侧边栏：主题表面色与内容区分隔，导航 + 采集控制常驻 */}
-      <aside className="flex w-16 shrink-0 flex-col border-r border-gray-200 bg-sidebar sm:w-60">
-        {/* Logo 区：墨色方块做品牌锚点 */}
+      <aside
+        className="flex w-16 shrink-0 flex-col border-r border-gray-200/80 backdrop-blur-md sm:w-60"
+        style={{ background: 'var(--sidebar-bg)' }}
+      >
+        {/* Logo 区 */}
         <div className="flex items-center justify-center gap-3 px-2 pb-5 pt-6 sm:justify-start sm:px-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-900 text-base font-bold text-white">
-            墨
-          </div>
+          <img src={mojiMark} alt="墨记" className="h-9 w-9 shrink-0" />
           <div className="hidden sm:block">
-            <p className="text-sm font-bold tracking-wide text-gray-900">墨记</p>
+            <p className="text-sm font-bold text-gray-900">墨记</p>
             <p className="text-2xs text-gray-400">记录工作痕迹</p>
           </div>
         </div>
@@ -271,48 +236,41 @@ function AppShell() {
               <span className={`h-2 w-2 rounded-full ${statusActive ? 'bg-brand-500 animate-pulse-dot' : 'bg-gray-300'}`} />
               <span className={`hidden sm:inline ${statusActive ? 'text-gray-700' : 'text-gray-400'}`}>{statusLabel}</span>
             </span>
-            {(awEnabled || windowTextEnabled) && (
-              <span className="hidden rounded bg-gray-200/80 px-1.5 py-0.5 text-2xs text-gray-500 sm:inline">
-                {awEnabled && windowTextEnabled ? '双源' : awEnabled ? 'AW' : '文本'}
-              </span>
-            )}
+            <span className="hidden rounded bg-gray-200/80 px-1.5 py-0.5 text-2xs text-gray-500 sm:inline">
+              {localMode ? '无 LLM' : '有 LLM'}
+            </span>
           </div>
 
           <button
             type="button"
             onClick={handleCaptureToggle}
-            disabled={!windowTextEnabled ? false : !isRunning && !isConfigured}
-            aria-label={windowTextEnabled ? (isRunning ? '停止采集' : '开始采集') : '立即同步'}
+            disabled={!isRunning && !captureConfigured}
+            aria-label={isRunning ? '停止采集' : '开始采集'}
             className={`w-full rounded-lg px-1.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:px-4 ${
               isRunning
                 ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                 : 'bg-brand-600 text-white hover:bg-brand-700'
             }`}
           >
-            <span className="sm:hidden">{windowTextEnabled ? (isRunning ? '停止' : '开始') : '同步'}</span>
-            <span className="hidden sm:inline">{windowTextEnabled ? (isRunning ? '停止采集' : '开始采集') : '立即同步'}</span>
+            <span className="sm:hidden">{isRunning ? '停止' : '开始'}</span>
+            <span className="hidden sm:inline">{isRunning ? '停止采集' : '开始采集'}</span>
           </button>
 
-          {windowTextEnabled && (
-            <button
-              type="button"
-              onClick={() => void captureNow()}
-              disabled={!isConfigured || isCapturing || isAnalyzing}
-              aria-label="立即采集一次"
-              className="w-full rounded-lg px-1 py-1.5 text-xs text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 sm:px-4"
-            >
-              <span className="sm:hidden">{isCapturing || isAnalyzing ? '处理中' : '采集'}</span>
-              <span className="hidden sm:inline">{isCapturing || isAnalyzing ? '处理中…' : '立即采集一次'}</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => void captureNow()}
+            disabled={!captureConfigured || isCapturing || isAnalyzing}
+            aria-label="立即采集一次"
+            className="w-full rounded-lg px-1 py-1.5 text-xs text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 sm:px-4"
+          >
+            <span className="sm:hidden">{isCapturing || isAnalyzing ? '处理中' : '采集'}</span>
+            <span className="hidden sm:inline">{isCapturing || isAnalyzing ? '处理中…' : '立即采集一次'}</span>
+          </button>
         </div>
       </aside>
 
       {/* 内容区 */}
-      <main
-        className="relative flex-1 overflow-y-auto"
-        style={{ background: 'var(--app-bg, #fafafa)' }}
-      >
+      <main className="relative flex-1 overflow-y-auto">
         {/* 错误提示 */}
         {error && (
           <div className="mx-auto max-w-5xl px-8 pt-6">
@@ -326,32 +284,32 @@ function AppShell() {
         )}
 
         {/* 配置引导：未配置 AI 时给出两条明确路径 */}
-        {page === 'dashboard' && !isConfigured && windowTextEnabled && (
+        {page === 'dashboard' && !isConfigured && !localMode && (
           <div className="mx-auto max-w-5xl px-8 pt-6">
-            <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200/80 bg-surface p-4 shadow-card">
               <div className="flex items-start gap-2.5 min-w-0">
-                <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
                 <div>
-                  <p className="text-sm font-medium text-amber-900">开始记录你的工作痕迹</p>
-                  <p className="mt-0.5 text-xs text-amber-800">配置 AI 识别（窗口文本分析），或先用 ActivityWatch 同步桌面活动（无需 API Key）。</p>
+                  <p className="text-sm font-medium text-gray-900">开始记录你的工作痕迹</p>
+                  <p className="mt-0.5 text-xs text-gray-600">配置 AI 识别，或切换到无 LLM 模式，使用本地固定规则记录活动。</p>
                 </div>
               </div>
               <div className="flex shrink-0 gap-2">
                 <button
                   type="button"
                   onClick={() => setPage('settings')}
-                  className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-700"
+                  className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700"
                 >
                   去配置 AI
                 </button>
                 <button
                   type="button"
-                  onClick={() => updateSettings({ dataSource: 'aw' })}
-                  className="rounded-md border border-amber-300 bg-surface px-3 py-1.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
+                  onClick={() => updateSettings({ dataSource: 'local' })}
+                  className="rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-400 hover:text-brand-700"
                 >
-                  先试试 ActivityWatch
+                  使用无 LLM 模式
                 </button>
               </div>
             </div>

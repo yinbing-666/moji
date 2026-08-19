@@ -70,7 +70,8 @@
 - [x] **旧 localStorage 数据迁移到 SQLite**（含 schema 迁移：`app`→`app_name`、`type`→`report_type`）。
 - [x] 报告历史迁移到 SQLite。
 - [x] 备份 / 恢复 + 30 秒自动备份。
-- [x] ActivityWatch 数据源（零 API 费用、秒级窗口时间线）。
+- [x] 可选 ActivityWatch 效率分析（零 API 费用、秒级窗口时间线）。
+- [x] 无 LLM 模式：本地窗口采集、规则分类和固定格式 Markdown 日报，不依赖 ActivityWatch。
 
 ## 验证命令
 
@@ -123,4 +124,5 @@ cargo test --locked -- --ignored
 ### P5：UI 打磨
 
 - [x] 默认跟随系统的深浅色主题切换，并支持强制浅色或深色。
+- [x] 两种数据模式：有 LLM 分析，或无 LLM 本地固定格式报告。
 - [x] 时间轴支持 15 分钟 96 格，并在悬停提示中显示具体活动。

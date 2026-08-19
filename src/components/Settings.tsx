@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useActivityStore } from '../stores/activityStore'
-import type { BackgroundPreset, ThemeMode } from '../stores/activityStore'
+import type { BackgroundPreset, DataSource, ThemeMode } from '../stores/activityStore'
 import { todayDateKey } from '../utils/date'
+import { getAppearancePreview } from '../utils/appearance'
 import {
   dbDiagnoseDb,
   dbLoadBackup,
@@ -17,7 +18,6 @@ export function Settings() {
     updateSettings,
     testAiConnection,
     connectionTestResult,
-    syncFromAw,
     importActivitiesFromJson,
     exportActivitiesAsJson,
     clearAllActivities,
@@ -166,9 +166,8 @@ export function Settings() {
 
   /* P1优化: 数据源切换 */
   const dataSourceOptions = [
-    { value: 'window_text' as const, label: '窗口文本 + AI 识别', desc: '本地读取窗口文本识别活动，不截图' },
-    { value: 'aw' as const, label: 'ActivityWatch', desc: '从 AW 同步桌面活动数据' },
-    { value: 'both' as const, label: '双源并行', desc: '窗口文本 AI 识别 + AW 时间线同时采集，去重合并' },
+    { value: 'llm' as const, label: '有 LLM', desc: '读取窗口文本并用模型识别活动，报告也可由模型生成' },
+    { value: 'local' as const, label: '无 LLM', desc: '只用本地规则记录活动，报告按固定格式生成，不需要 API 或 ActivityWatch' },
   ]
 
   const backgroundPresets: { value: BackgroundPreset; label: string; desc: string }[] = [
@@ -210,7 +209,7 @@ export function Settings() {
                   name="dataSource"
                   value={opt.value}
                   checked={localSettings.dataSource === opt.value}
-                  onChange={e => updateField('dataSource', e.target.value as 'window_text' | 'aw')}
+                  onChange={e => updateField('dataSource', e.target.value as DataSource)}
                   className="mt-0.5 h-4 w-4 text-brand-600 focus:ring-brand-500"
                 />
                 <div>
@@ -223,7 +222,7 @@ export function Settings() {
         </fieldset>
 
         {/* API配置 - 条件渲染 */}
-        {localSettings.dataSource !== 'aw' && (
+        {localSettings.dataSource !== 'local' && (
           <div className="space-y-4 rounded-lg bg-gray-50/50 p-4">
             <div>
               <label htmlFor="api-key" className="block text-sm font-medium text-gray-700 mb-1">
@@ -293,48 +292,9 @@ export function Settings() {
           </div>
         )}
 
-        {/* AW同步配置 */}
-        {localSettings.dataSource !== 'window_text' && (
-          <div className="space-y-4 rounded-lg bg-teal-50/30 p-4 border border-teal-100">
-            <div>
-              <label htmlFor="aw-host" className="block text-sm font-medium text-gray-700 mb-1">
-                AW 服务地址
-              </label>
-              <input
-                id="aw-host"
-                type="text"
-                value={localSettings.awHost || ''}
-                onChange={e => updateField('awHost', e.target.value)}
-                placeholder="127.0.0.1"
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-100"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                ActivityWatch 默认端口 5600，确保服务已启动
-              </p>
-            </div>
-
-            <div>
-              <label htmlFor="aw-sync-minutes" className="block text-sm font-medium text-gray-700 mb-1">
-                同步间隔（分钟）
-              </label>
-              <input
-                id="aw-sync-minutes"
-                type="number"
-                min={1}
-                max={60}
-                value={localSettings.awSyncMinutes || 5}
-                onChange={e => updateField('awSyncMinutes', parseInt(e.target.value) || 5)}
-                className="w-full max-w-[120px] rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-100"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => syncFromAw({ host: localSettings.awHost, port: localSettings.awPort }).catch(() => {})}
-              className="rounded-md bg-teal-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-teal-700 transition-colors"
-            >
-              立即同步测试
-            </button>
+        {localSettings.dataSource === 'local' && (
+          <div className="rounded-lg border border-teal-100 bg-teal-50/30 p-4 text-sm text-teal-800">
+            无 LLM 模式使用墨记自己的窗口采集和本地分类规则，不发送窗口内容，也不依赖 ActivityWatch。
           </div>
         )}
       </section>
@@ -522,11 +482,12 @@ export function Settings() {
                 <div 
                   className="mb-2 h-12 w-full rounded-md bg-gradient-to-br"
                   style={{
-                    background: getBackgroundPreview(
+                    background: getAppearancePreview(
                       preset.value,
                       localSettings.appearance?.themeMode === 'system'
                         ? document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
                         : localSettings.appearance?.themeMode ?? 'light',
+                      localSettings.appearance?.customBackground,
                     ),
                   }}
                 />
@@ -703,24 +664,4 @@ export function Settings() {
       )}
     </div>
   )
-}
-
-/* 辅助函数：获取背景预览样式 */
-function getBackgroundPreview(preset: BackgroundPreset, theme: Exclude<ThemeMode, 'system'>): string {
-  if (theme === 'dark') {
-    switch (preset) {
-      case 'mint': return 'linear-gradient(135deg, #102823 0%, #152520 50%, #18181b 100%)'
-      case 'sky': return 'linear-gradient(135deg, #102431 0%, #17232e 50%, #18181b 100%)'
-      case 'graphite': return 'linear-gradient(135deg, #18181b 0%, #202024 50%, #27272a 100%)'
-      case 'custom': return 'repeating-conic-gradient(#27272a 0% 25%, #18181b 0% 50%) 50% / 10px 10px'
-      default: return '#09090b'
-    }
-  }
-  switch (preset) {
-    case 'mint': return 'linear-gradient(135deg, #d4f5e9 0%, #e8f5e9 50%, #f0f7f4 100%)'
-    case 'sky': return 'linear-gradient(135deg, #dceefb 0%, #e8f0fe 50%, #f0f4f8 100%)'
-    case 'graphite': return 'linear-gradient(135deg, #e8eaed 0%, #f1f3f4 50%, #f8f9fa 100%)'
-    case 'custom': return 'repeating-conic-gradient(#f3f4f6 0% 25%, #fff 0% 50%) 50% / 10px 10px'
-    default: return '#fafafa'
-  }
 }
