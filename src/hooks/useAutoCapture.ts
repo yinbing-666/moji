@@ -9,7 +9,7 @@ import { useScreenshot, type ScreenshotCaptureResult } from './useScreenshot'
 import { useActivityStore, type Activity } from '../stores/activityStore'
 import { analyzeWindowText, classifyLocally } from '../utils/ai'
 import { captureVisibleWindows, type CapturedWindow } from '../utils/screenshot'
-import { dbGetIdleSeconds, dbIsScreenLocked, dbReadWindowText } from '../utils/db'
+import { dbGetIdleSeconds, dbIsScreenLocked, dbReadWindowText, dbWriteAwWindowEvent } from '../utils/db'
 
 /** 空闲超过该秒数则跳过本轮采集（约 10 分钟） */
 const IDLE_SKIP_SECONDS = 600
@@ -222,11 +222,22 @@ export function useAutoCapture() {
           })
         }
       }
+
+      // ActivityWatch 的时间线仅应写入前台窗口，避免多窗口预览重复累计时长。
+      const foreground = capturedWindows.find(window => window.is_foreground) ?? capturedWindows[0]
+      if (foreground) {
+        void dbWriteAwWindowEvent({
+          app: foreground.process_name,
+          title: foreground.title,
+          duration: settings.intervalSeconds,
+          timestamp: new Date().toISOString(),
+        })
+      }
     } finally {
       analyzingRef.current = false
       setIsAnalyzing(false)
     }
-  }, [hasAiConfig, localMode, settings.apiKey, settings.baseUrl, settings.textModel, settings.saveScreenshotThumbnails, addActivity, setIsAnalyzing])
+  }, [hasAiConfig, localMode, settings.apiKey, settings.baseUrl, settings.textModel, settings.saveScreenshotThumbnails, settings.intervalSeconds, addActivity, setIsAnalyzing])
 
   const screenshot = useScreenshot({
     intervalSeconds: settings.intervalSeconds,

@@ -167,7 +167,7 @@ export function Settings() {
   /* P1优化: 数据源切换 */
   const dataSourceOptions = [
     { value: 'llm' as const, label: '有 LLM', desc: '读取窗口文本并用模型识别活动，报告也可由模型生成' },
-    { value: 'local' as const, label: '无 LLM', desc: '只用本地规则记录活动，报告按固定格式生成，不需要 API 或 ActivityWatch' },
+    { value: 'local' as const, label: '无 LLM', desc: '只用本地规则记录活动，报告按固定格式生成，不需要 API' },
   ]
 
   const backgroundPresets: { value: BackgroundPreset; label: string; desc: string }[] = [
@@ -294,7 +294,7 @@ export function Settings() {
 
         {localSettings.dataSource === 'local' && (
           <div className="rounded-lg border border-teal-100 bg-teal-50/30 p-4 text-sm text-teal-800">
-            无 LLM 模式使用墨记自己的窗口采集和本地分类规则，不发送窗口内容，也不依赖 ActivityWatch。
+            无 LLM 模式使用本地分类规则，不发送窗口内容。ActivityWatch 由墨记内置并随应用自动运行，无需安装或配置。
           </div>
         )}
       </section>

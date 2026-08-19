@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Activity } from '../stores/activityStore'
 import { useActivityStore } from '../stores/activityStore'
 import { categoryVisual } from '../utils/categoryStyles'
@@ -15,6 +15,7 @@ import {
   type CustomTemplate,
 } from '../utils/templates'
 import { AwAnalytics } from './AwAnalytics'
+import { MarkdownReport } from './MarkdownReport'
 
 const REPORT_TYPE_LABEL: Record<string, string> = {
   daily: '日报',
@@ -45,6 +46,8 @@ export function ReportView({ activities }: ReportViewProps) {
   const [templateName, setTemplateName] = useState('')
   const [templatePrompt, setTemplatePrompt] = useState('')
   const [templateError, setTemplateError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'daily' | 'efficiency'>('daily')
+  const reportContentRef = useRef<HTMLElement | null>(null)
   const isLocalMode = settings.dataSource === 'local'
   const effectiveTemplate = isLocalMode && selectedTemplate.startsWith('custom:') ? 'standard' : selectedTemplate
 
@@ -141,6 +144,18 @@ export function ReportView({ activities }: ReportViewProps) {
     window.print()
   }
 
+  useEffect(() => {
+    if (lastReport && activeTab === 'daily') {
+      reportContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [lastReport, activeTab])
+
+  const handleDeleteReport = (id: string) => {
+    const item = reportHistory.find(report => report.id === id)
+    if (!item || !window.confirm('确定删除这份报告？删除后无法在历史记录中恢复。')) return
+    deleteReport(id)
+  }
+
   /* P1优化: 报告数据聚合 */
   const reportData = useMemo(() => {
     const dayActivities = activities.filter(a => localDateKey(a.timestamp) === reportDate)
@@ -207,11 +222,16 @@ export function ReportView({ activities }: ReportViewProps) {
   /* P1优化: 报告页面布局 - 使用层级化卡片系统 */
   return (
     <div className="report-print-root space-y-6">
-      {/* 可选效率分析，不影响两种核心采集模式 */}
-      <div className="report-no-print">
-        <AwAnalytics />
-      </div>
+      <nav className="report-no-print flex border-b border-gray-200" aria-label="报告类型">
+        <button type="button" onClick={() => setActiveTab('daily')} className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'daily' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>工作日报</button>
+        <button type="button" onClick={() => setActiveTab('efficiency')} className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'efficiency' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>效率分析</button>
+      </nav>
 
+      {activeTab === 'efficiency' ? (
+        <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+          <AwAnalytics activities={activities} />
+        </section>
+      ) : (<>
       {/* 报告控制栏 - 层级2：标准卡片 */}
       <section className="report-no-print rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
         {isLocalMode && (
@@ -345,7 +365,7 @@ export function ReportView({ activities }: ReportViewProps) {
 
       {/* 报告内容展示：生成后或从历史打开 */}
       {lastReport && (
-        <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+        <section ref={reportContentRef} className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
             <div className="flex items-center gap-2.5">
               <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
@@ -361,6 +381,9 @@ export function ReportView({ activities }: ReportViewProps) {
               </p>
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
                 {templateLabel(lastReport.template)}
+              </span>
+              <span className="rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-500">
+                当前为 {isLocalMode ? '固定格式模式' : 'AI 模式'}
               </span>
             </div>
             <div className="report-no-print flex items-center gap-2">
@@ -387,8 +410,8 @@ export function ReportView({ activities }: ReportViewProps) {
               </button>
             </div>
           </div>
-          <div className="report-content max-h-[28rem] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
-            {lastReport.content}
+          <div className="report-content max-h-[32rem] overflow-y-auto">
+            <MarkdownReport content={lastReport.content} />
           </div>
         </section>
       )}
@@ -430,7 +453,7 @@ export function ReportView({ activities }: ReportViewProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => deleteReport(item.id)}
+                  onClick={() => handleDeleteReport(item.id)}
                   className="shrink-0 rounded-md px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                   title="删除这条报告"
                 >
@@ -614,6 +637,7 @@ export function ReportView({ activities }: ReportViewProps) {
           </section>
         </>
       )}
+      </>)}
     </div>
   )
 }

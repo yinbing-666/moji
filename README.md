@@ -20,7 +20,7 @@
 - **窗口文本识别**：UI Automation 只读采集窗口内控件文本（标签页、文件路径、编辑框内容等），纯文本模型归纳活动，不截图、不上云图像。
 - **采集节流与隐私排除**：可设置每轮最多分析 1/2/3/5/8 个窗口并跳过重复窗口；可按应用名、窗口标题或进程名关键词跳过采集；密码框等敏感控件自动跳过。
 - **AI 活动识别**：按开发、会议、文档、沟通、其他分类生成中文活动描述。
-- **活动时长统计**：ActivityWatch 源透传事件时长，窗口文本采集按连续采集周期累计停留时间；仪表盘与报告页展示总时长、单活动时长、应用时长排行。
+- **活动时长统计**：内置 ActivityWatch 服务随墨记自动启动，用于记录前台窗口时间线；窗口文本采集按连续采集周期累计停留时间，仪表盘与报告页展示总时长、单活动时长、应用时长排行。
 - **仪表盘**：今日投入时长英雄卡、主要应用 / 类型卡、24 小时彩色活动时间轴（对数缩放）、分类占比堆叠条、最近活动与手动采集入口。
 - **活动记录管理**：关键词搜索、分类筛选、仅看今天；时间轴按日期分组；编辑描述（Ctrl+Enter 保存）、删除单条、清空全部。
 - **报告生成**：选择日期后用 AI 生成日报，内置模板 + 自定义模板（增删改、本地持久化）；生成后在应用内展示，支持复制与下载 Markdown；生成失败只显示提示，不污染报告内容。
@@ -48,15 +48,11 @@
 | 依赖 | 说明 |
 |---|---|
 | **Windows 10 / 11** | 窗口采集基于 Windows UI Automation，暂不支持其他系统 |
-| **OpenAI 兼容 API Key** | 活动识别与报告生成依赖 AI 模型；不配置时采集、记录、时间轴等本地功能仍可用，但不会产出 AI 归纳与报告 |
+| **OpenAI 兼容 API Key** | 仅「有 LLM」模式的活动识别与报告生成需要；「无 LLM」模式可使用本地分类规则和固定格式报告 |
 | **Node.js 20+** | 前端构建（`npm install` / `npm run build` / `npm run tauri dev`） |
 | **Rust stable 工具链** | 后端 Tauri/Rust 编译（`cargo check` / `npm run tauri build`），含 MSVC 链接器（Visual Studio Build Tools） |
 
-### 可选
-
-| 依赖 | 作用 | 不装的影响 |
-|---|---|---|
-| **ActivityWatch** | 作为活动时长数据源（透传事件时长，与窗口文本采集互补） | 时长统计仅依赖本地连续采集周期累计，数据精度略低 |
+ActivityWatch 已随 Windows 安装包内置。无需单独下载、启动或配置端口。
 
 ## 快速开始
 
@@ -104,6 +100,10 @@ API Key 只保存在本机设置中，不应写入代码仓库、日志。
 - API Key 以明文形式保存在本机 localStorage 的 `xiaohei-settings` 键中，未做加密。这是本地信任模型下的权衡，同一用户下的其他进程理论上可读取；在共享或不可信设备上使用时请注意。
 - 除 AI API 调用外，应用没有云同步或服务端存储。
 
+## 第三方组件声明
+
+Windows 安装包包含未修改的 [ActivityWatch aw-server-rust](https://github.com/ActivityWatch/aw-server-rust) `0.13.2`，用于本机窗口时间线记录。该组件采用 Mozilla Public License 2.0（MPL-2.0）发布，源码获取方式、许可证及分发说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
 ## 项目结构
 
 ```text
@@ -112,7 +112,7 @@ API Key 只保存在本机设置中，不应写入代码仓库、日志。
 │   ├── index.css                  # Tailwind 入口 + 设计系统（含深色适配）
 │   ├── components/
 │   │   ├── ActivityTimeline.tsx    # 活动记录筛选、编辑、删除、导出
-│   │   ├── AwAnalytics.tsx         # ActivityWatch 来源分析视图
+│   │   ├── AwAnalytics.tsx         # 效率分析视图
 │   │   ├── ReportView.tsx          # 报告生成（内置/自定义模板）、复制、下载
 │   │   ├── Settings.tsx            # AI、采集、隐私、主题设置
 │   │   ├── TodayOverview.tsx       # 今日概览（投入时长、主要应用/类型）
@@ -135,7 +135,7 @@ API Key 只保存在本机设置中，不应写入代码仓库、日志。
 ├── src-tauri/                      # Tauri/Rust 后端
 │   ├── src/
 │   │   ├── lib.rs                  # 应用入口、窗口/托盘、chat_completions 代理
-│   │   ├── aw.rs / aw_analytics.rs # ActivityWatch 数据接入与分析
+│   │   ├── aw.rs / aw_analytics.rs # 内置 ActivityWatch 数据接入与分析
 │   │   ├── db.rs                   # SQLite 存储（含自动迁移）
 │   │   └── system.rs               # 窗口枚举 / UI Automation 文本采集
 │   └── tauri.conf.json             # 应用配置（窗口、打包）

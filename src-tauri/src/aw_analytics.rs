@@ -51,6 +51,7 @@ pub struct AwAnalyticsResult {
     pub deep_work_blocks: u64,
     pub levels: Vec<AwLevel>,
     pub report_json: String,
+    pub report_content: String,
     pub report_html: String,
 }
 
@@ -185,6 +186,7 @@ pub async fn run_aw_analytics(
         deep_work_blocks: deep.block_count,
         levels: summary.levels.unwrap_or_default(),
         report_json: report_json.to_string_lossy().to_string(),
+        report_content: text,
         report_html: report_html.to_string_lossy().to_string(),
     })
 }
@@ -205,37 +207,6 @@ pub async fn open_aw_report(path: String) -> Result<(), String> {
         let _ = Command::new("open").arg(&path).spawn();
     }
     Ok(())
-}
-
-/// 探测并启动 ActivityWatch(常见安装路径)。返回启动的可执行文件路径。
-#[tauri::command]
-pub async fn launch_activitywatch() -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    {
-        let mut candidates: Vec<PathBuf> = Vec::new();
-        if let Ok(home) = std::env::var("USERPROFILE") {
-            candidates.push(PathBuf::from(&home).join("ActivityWatch/aw-qt.exe"));
-        }
-        if let Ok(local) = std::env::var("LOCALAPPDATA") {
-            candidates.push(PathBuf::from(&local).join("Programs/activitywatch/aw-qt.exe"));
-            candidates.push(PathBuf::from(&local).join("Programs/ActivityWatch/aw-qt.exe"));
-        }
-        candidates.push(PathBuf::from("C:/Program Files/ActivityWatch/aw-qt.exe"));
-
-        for path in &candidates {
-            if path.exists() {
-                Command::new(path)
-                    .spawn()
-                    .map_err(|e| format!("启动 ActivityWatch 失败: {e}"))?;
-                return Ok(path.to_string_lossy().to_string());
-            }
-        }
-        Err("未找到 ActivityWatch，请先手动安装或启动".to_string())
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        Err("非 Windows 平台暂不支持自动启动".to_string())
-    }
 }
 
 fn find_report_json(root: &Path) -> Option<PathBuf> {

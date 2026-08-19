@@ -5,7 +5,7 @@
 
 ## 当前阶段（2026-08-19）
 
-视觉（多模态）模型已彻底移除，识别链路改为「UIA 窗口文本 → 纯文本模型」；同时增加不依赖 LLM 或 ActivityWatch 的本地采集与固定格式报告。当前已完成稳定性审查与报告/可视化收尾，覆盖本地日期、采集生命周期、隐私过滤、备份恢复、报告质量评分、打印/PDF、15 分钟时间轴、跟随系统主题和无 LLM 模式。
+视觉（多模态）模型已彻底移除，识别链路改为「UIA 窗口文本 → 纯文本模型」；同时增加本地采集与固定格式报告。当前进行内置 ActivityWatch 整合：服务随 APP 启停，用户不需要单独安装或配置端口。
 
 ## 已完成
 
@@ -23,7 +23,7 @@
 - [x] SQLite 存储层：`db_*` 命令 + 建表 + `rusqlite` + localStorage→SQLite 迁移
 - [x] 系统检测：`get_foreground_window` / `get_idle_seconds` / `is_screen_locked` / `diagnose_db`
 - [x] 备份 / 恢复：`save_backup` / `load_backup` / `restore_backup_to_db`
-- [x] 可选 ActivityWatch 效率分析：`aw_fetch_events` / `aw_health`（零 API 费用、秒级窗口时间线）
+- [x] 内置 ActivityWatch 效率分析：`aw_fetch_events` / `aw_health`（零 API 费用、秒级窗口时间线）
 - [x] 系统托盘：关闭主窗口时隐藏到托盘，支持重新显示和退出
 
 ### 阶段 2 — 报告与可视化收尾
@@ -31,10 +31,14 @@
 - [x] 今日时间轴支持 30 分钟（48 格）与 15 分钟（96 格）切换，悬停可查看具体活动
 - [x] 报告质量评分：按记录数、时间跨度和分类多样性计算 0–100 分及质量等级
 - [x] 报告打印 / PDF：调用系统打印对话框，打印样式隐藏控制区并完整展开正文
+- [x] ActivityWatch 效率报告可在 APP 内直接阅读：渲染评分、趋势、分类、小时活动、排行、洞察、规则健康和隐私信息，HTML 保留为导出入口
 - [x] 窄屏布局：小于 640px 时侧栏缩为 64px 图标栏，报告控件和模板编辑器不再被裁切
 - [x] 三档主题：默认跟随 Windows 系统主题，也可强制浅色或深色；背景预设和打印样式同步适配
 - [x] 视觉系统收敛：背景皮肤同时作用于应用画布和侧栏，统一中性色板与语义色，并接入墨滴时间轨迹 Logo 和空状态标识
-- [x] 两种数据模式：有 LLM 使用窗口文本分析；无 LLM 使用本地窗口采集与固定格式 Markdown 报告，不依赖 ActivityWatch
+- [x] 两种数据模式：有 LLM 使用窗口文本分析；无 LLM 使用本地窗口采集与固定格式 Markdown 报告
+- [x] 报告页拆分为「工作日报／效率分析」标签；效率分析统一读取墨记活动，内置 ActivityWatch 在后台记录时间线
+- [x] 日报正文在 APP 内安全渲染 Markdown，生成后自动定位，历史删除增加确认，并标识 AI 生成与固定格式来源
+- [x] 内置 ActivityWatch Rust server：墨记启动时自动运行、退出时清理；窗口采集直接写入内置服务，界面统一为有 LLM／无 LLM 两种模式
 
 ## 近期重大变更（2026-08 中旬）
 
@@ -117,6 +121,10 @@
 
 ## 最近验证
 
+- 2026-08-19 内置 ActivityWatch 验证：release 可执行文件启动后，从打包资源目录自动运行 `aw-server-rust.exe` 并在 `127.0.0.1:5601` 返回 v0.13.2；真实 API smoke test 已完成 bucket 创建、窗口事件写入与读取。`npm run build`、`cargo check --locked`、`cargo test --locked` 与 `npm run tauri build` 均通过，NSIS 安装包已重建。
+- 2026-08-19 APP 内效率报告验证：修复 `report_json` 路径被误当作内容解析的问题，Tauri IPC 同时返回原路径与 JSON 内容；使用 Computer Use 在真实桌面 APP 生成当天报告，评分、指标、分类、趋势、小时活动、应用/网站排行、洞察、规则健康、隐私信息和 HTML 导出入口均正常显示。另完成 1280×800 浅色/深色与 390×844 响应式验证；`npm run build`、`cargo check --locked`、`git diff --check` 通过。
+- 2026-08-19 报告体验验证：浏览器验证双标签、本地无时长数据按记录数展示、`.exe` 应用名清洗、ActivityWatch 可选切换提示和安全 Markdown 标题/列表/强调渲染；`npm run build`、`git diff --check` 通过。当前 PowerShell 环境未找到 `cargo`，Rust 检查待在含 Rust 工具链的环境复验。
+- 2026-08-19 桌面复核：使用 Computer Use 精确选择开发版 Tauri 窗口，验证报告页双标签、墨记本地效率报告、待校准评分和「AI 工具使用时长」均可在 APP 内直接阅读。
 - 2026-08-19 主题验证：默认 `system` 可随系统颜色偏好实时切换，强制浅色/深色不受系统偏好影响并可刷新恢复；Edge 在 1280×800 和 390×844 下验证四个页面无横向溢出，深色打印为白底黑字；`npm run build`、`cargo check --locked`、`cargo test --locked` 和 5 个真实桌面忽略测试全部通过，NSIS 安装包已重新构建。
 - 2026-08-19 视觉系统验证：浅色/深色下 plain、mint、sky、graphite 四套皮肤均同步改变应用画布与侧栏；设置页预览与实际皮肤一致；桌面和 390×844 四页面无横向溢出，Logo 与空状态正常渲染，控制台无新增错误；`npm run build`、`git diff --check` 通过。
 - 2026-08-19 Logo 资源复核：采用用户提供的第 3 张墨滴时间环图，去白底并保留透明边距后接入侧栏、时间轴空状态和 favicon；浅色/深色桌面与 390×844 页面均正常渲染，`npm run build`、`git diff --check` 通过。

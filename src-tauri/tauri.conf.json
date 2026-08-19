@@ -27,6 +27,8 @@
     "active": true,
     "targets": ["nsis"],
     "resources": {
+      "vendor/activitywatch/aw-server-rust.exe": "aw-server-rust.exe",
+      "vendor/activitywatch/NOTICE.txt": "THIRD_PARTY_NOTICES/ActivityWatch.txt",
       "../tools/activitywatch-analytics": "tools/activitywatch-analytics"
     },
     "icon": [
