@@ -39,6 +39,7 @@
 - [x] 报告页拆分为「工作日报／效率分析」标签；效率分析统一读取墨记活动，内置 ActivityWatch 在后台记录时间线
 - [x] 日报正文在 APP 内安全渲染 Markdown，生成后自动定位，历史删除增加确认，并标识 AI 生成与固定格式来源
 - [x] 内置 ActivityWatch Rust server：墨记启动时自动运行、退出时清理；窗口采集直接写入内置服务，界面统一为有 LLM／无 LLM 两种模式
+- [x] 报告阅读体验：正文按摘要、行动、风险和时间线语义分区渲染，增加报告结构、行动项、风险项和正文长度速览
 
 ## 近期重大变更（2026-08 中旬）
 
@@ -121,6 +122,7 @@
 
 ## 最近验证
 
+- 2026-08-19 报告阅读样式验证：受控 Markdown 渲染器已覆盖标题、强调、代码、列表与语义章节；`npm run build`、`git diff --check` 通过。
 - 2026-08-19 内置 ActivityWatch 验证：release 可执行文件启动后，从打包资源目录自动运行 `aw-server-rust.exe` 并在 `127.0.0.1:5601` 返回 v0.13.2；真实 API smoke test 已完成 bucket 创建、窗口事件写入与读取。`npm run build`、`cargo check --locked`、`cargo test --locked` 与 `npm run tauri build` 均通过，NSIS 安装包已重建。
 - 2026-08-19 APP 内效率报告验证：修复 `report_json` 路径被误当作内容解析的问题，Tauri IPC 同时返回原路径与 JSON 内容；使用 Computer Use 在真实桌面 APP 生成当天报告，评分、指标、分类、趋势、小时活动、应用/网站排行、洞察、规则健康、隐私信息和 HTML 导出入口均正常显示。另完成 1280×800 浅色/深色与 390×844 响应式验证；`npm run build`、`cargo check --locked`、`git diff --check` 通过。
 - 2026-08-19 报告体验验证：浏览器验证双标签、本地无时长数据按记录数展示、`.exe` 应用名清洗、ActivityWatch 可选切换提示和安全 Markdown 标题/列表/强调渲染；`npm run build`、`git diff --check` 通过。当前 PowerShell 环境未找到 `cargo`，Rust 检查待在含 Rust 工具链的环境复验。

@@ -27,6 +27,33 @@ interface ReportViewProps {
   activities: Activity[]
 }
 
+function reportPresentation(content: string) {
+  const lines = content.replace(/\r\n/g, '\n').split('\n')
+  let currentHeading = ''
+  let actionItems = 0
+  let riskItems = 0
+  let sections = 0
+
+  for (const line of lines) {
+    const heading = /^(#{1,3})\s+(.+)$/.exec(line.trim())
+    if (heading) {
+      currentHeading = heading[2]
+      sections++
+      continue
+    }
+    if (!/^[-*]\s+/.test(line.trim())) continue
+    if (/下一步|明日|后续|行动|待办/.test(currentHeading)) actionItems++
+    if (/风险|问题|阻塞/.test(currentHeading)) riskItems++
+  }
+
+  return {
+    sections,
+    actionItems,
+    riskItems,
+    characters: content.replace(/\s/g, '').length,
+  }
+}
+
 export function ReportView({ activities }: ReportViewProps) {
   const {
     settings,
@@ -210,6 +237,11 @@ export function ReportView({ activities }: ReportViewProps) {
     }
   }, [activities, reportDate])
 
+  const currentPresentation = useMemo(
+    () => lastReport ? reportPresentation(lastReport.content) : null,
+    [lastReport],
+  )
+
   /* P1优化: 报告生成处理 */
   const handleGenerateReport = async () => {
     try {
@@ -365,7 +397,8 @@ export function ReportView({ activities }: ReportViewProps) {
 
       {/* 报告内容展示：生成后或从历史打开 */}
       {lastReport && (
-        <section ref={reportContentRef} className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+        <section ref={reportContentRef} className="overflow-hidden rounded-xl border border-gray-200/60 bg-white shadow-card">
+          <div className="border-b border-gray-100 bg-gray-50/60 px-5 py-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
             <div className="flex items-center gap-2.5">
               <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
@@ -410,7 +443,22 @@ export function ReportView({ activities }: ReportViewProps) {
               </button>
             </div>
           </div>
-          <div className="report-content max-h-[32rem] overflow-y-auto">
+          {currentPresentation && <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-gray-200 bg-gray-200 sm:grid-cols-4">
+            {[
+              ['报告章节', `${currentPresentation.sections} 个`, '按标题组织'],
+              ['行动项', `${currentPresentation.actionItems} 条`, '下一步与待办'],
+              ['风险项', `${currentPresentation.riskItems} 条`, '问题与阻塞'],
+              ['正文长度', `${currentPresentation.characters} 字`, '已保存至本机'],
+            ].map(([label, value, note]) => (
+              <div key={label} className="bg-surface px-3 py-2.5">
+                <p className="text-[11px] text-gray-500">{label}</p>
+                <p className="mt-1 text-base font-semibold tabular-nums text-gray-900">{value}</p>
+                <p className="mt-0.5 text-[10px] text-gray-400">{note}</p>
+              </div>
+            ))}
+          </div>}
+          </div>
+          <div className="report-content max-h-[36rem] overflow-y-auto p-5">
             <MarkdownReport content={lastReport.content} />
           </div>
         </section>
