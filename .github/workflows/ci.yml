@@ -46,6 +46,11 @@ jobs:
             src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      # 内置 ActivityWatch 二进制不进 git，从本仓库 Release 下载（build.rs 校验 resources 需要它存在）
+      - name: Fetch AW binary
+        shell: pwsh
+        run: ./scripts/fetch-aw-server.ps1
+
       - name: Cargo check
         run: cargo check
         working-directory: src-tauri
