@@ -16,12 +16,25 @@ interface DbActivity {
   duration_seconds?: number | null
 }
 
-interface DbReportHistory {
+export interface DbReportHistory {
   id: string
   created_at: string
   report_type: string
   template: string
   content: string
+}
+
+interface PaginatedParams {
+  offset: number
+  limit: number
+  category?: string | null
+  todayOnly?: boolean | null
+  keyword?: string | null
+}
+
+interface PaginatedResult {
+  total: number
+  items: DbActivity[]
 }
 
 let invoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null
@@ -52,17 +65,6 @@ async function callOr<T>(cmd: string, args: Record<string, unknown> | undefined,
   return result ?? fallback
 }
 
-/**
- * 严格调用：后端不可用或命令报错时直接抛出。
- * 用于写操作（保存/删除/备份）——成功不抛错即真实成功，
- * 不再用「返回值 !== null」判断（无返回值的命令序列化为 null，恒被误判失败）。
- */
-async function callStrict<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const inv = await getInvoke()
-  if (!inv) throw new Error('桌面后端不可用，请在桌面端运行')
-  return (await inv(cmd, args)) as T
-}
-
 // ── Activities ──
 
 export async function dbSaveActivity(activity: {
@@ -74,8 +76,8 @@ export async function dbSaveActivity(activity: {
   description: string
   screenshotBase64?: string
   durationSeconds?: number
-}): Promise<void> {
-  await callStrict('db_save_activity', {
+}): Promise<boolean> {
+  const result = await call('db_save_activity', {
     id: activity.id,
     timestamp: activity.timestamp,
     category: activity.category,
@@ -85,22 +87,46 @@ export async function dbSaveActivity(activity: {
     screenshotBase64: activity.screenshotBase64 || null,
     durationSeconds: activity.durationSeconds ?? null,
   })
+  return result !== null
 }
 
 export async function dbLoadActivities(): Promise<DbActivity[] | null> {
   return call<DbActivity[]>('db_load_activities')
 }
 
-export async function dbDeleteActivity(id: string): Promise<void> {
-  await callStrict('db_delete_activity', { id })
+export async function dbLoadActivitiesPaginated(params: PaginatedParams): Promise<PaginatedResult | null> {
+  // Tauri 2 command args: for struct params, pass as object with camelCase keys
+  return call<PaginatedResult>('db_load_activities_paginated', {
+    params: {
+      offset: params.offset,
+      limit: params.limit,
+      category: params.category ?? null,
+      todayOnly: params.todayOnly ?? null,
+      keyword: params.keyword ?? null,
+    },
+  })
 }
 
-export async function dbClearActivities(): Promise<void> {
-  await callStrict('db_clear_activities')
+export async function dbDeleteActivity(id: string): Promise<boolean> {
+  return (await call('db_delete_activity', { id })) !== null
+}
+
+export async function dbClearActivities(): Promise<boolean> {
+  return (await call('db_clear_activities')) !== null
 }
 
 export async function dbImportActivities(data: string): Promise<number | null> {
   return call<number>('db_import_activities', { data })
+}
+
+async function callStrict<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
+  const inv = await getInvoke()
+  if (!inv) return null
+  return (await inv(cmd, args)) as T
+}
+
+export async function dbReplaceActivities(data: string): Promise<number | null> {
+  return callStrict<number>('db_replace_activities', { data })
 }
 
 // ── Report History ──
@@ -111,14 +137,14 @@ export async function dbSaveReportHistory(item: {
   type: string
   template: string
   content: string
-}): Promise<void> {
-  await callStrict('db_save_report_history', {
+}): Promise<boolean> {
+  return (await call('db_save_report_history', {
     id: item.id,
     createdAt: item.createdAt,
     reportType: item.type,
     template: item.template,
     content: item.content,
-  })
+  })) !== null
 }
 
 export async function dbLoadReportHistory(): Promise<DbReportHistory[] | null> {
@@ -131,17 +157,16 @@ export async function dbDeleteReportHistory(id: string): Promise<boolean> {
 
 // ── Backup / Restore ──
 
-/** 触发后端备份，成功返回备份文件字节数；失败（后端不可用/命令报错）抛出异常 */
-export async function dbSaveBackup(): Promise<number> {
-  return callStrict<number>('save_backup')
+export async function dbSaveBackup(): Promise<boolean> {
+  return (await callStrict('save_backup')) !== null
 }
 
 export async function dbLoadBackup(): Promise<boolean> {
-  return (await callOr<boolean>('load_backup', undefined, false))
+  return (await callStrict<boolean>('load_backup')) ?? false
 }
 
 export async function dbRestoreBackupToDb(): Promise<number | null> {
-  return call<number>('restore_backup_to_db')
+  return callStrict<number>('restore_backup_to_db')
 }
 
 // ── ActivityWatch ──
@@ -216,8 +241,15 @@ export interface AwAnalyticsResult {
 }
 
 /** 运行 AW 效率分析(Python 脚本),返回关键指标 */
-export async function runAwAnalytics(period: string): Promise<AwAnalyticsResult | null> {
-  return call<AwAnalyticsResult>('run_aw_analytics', { period })
+export async function runAwAnalytics(
+  period: string,
+  options?: { host?: string; port?: number },
+): Promise<AwAnalyticsResult | null> {
+  return call<AwAnalyticsResult>('run_aw_analytics', {
+    period,
+    host: options?.host,
+    port: options?.port,
+  })
 }
 
 /** 用系统默认浏览器打开本地 HTML 报告 */
@@ -245,7 +277,7 @@ export async function dbIsScreenLocked(): Promise<boolean> {
 }
 
 export async function dbDiagnoseDb(): Promise<string | null> {
-  return call<string>('diagnose_db')
+  return callStrict<string>('diagnose_db')
 }
 
 // ── Window Text (UI Automation) ──

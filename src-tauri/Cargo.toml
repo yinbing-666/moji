@@ -1,6 +1,6 @@
 [package]
 name = "xiaohei-daily"
-version = "0.1.0"
+version = "0.1.1"
 description = "AI 自动工作日报生成工具"
 edition = "2021"
 

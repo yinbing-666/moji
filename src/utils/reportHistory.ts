@@ -17,6 +17,10 @@ export interface ReportHistoryItem {
 const REPORT_HISTORY_KEY = 'moji-report-history'
 const MAX_REPORT_HISTORY = 20
 
+export function hasStoredReportHistory(): boolean {
+  return localStorage.getItem(REPORT_HISTORY_KEY) !== null
+}
+
 function isReportType(value: unknown): value is ReportType {
   return value === 'daily' || value === 'weekly' || value === 'monthly'
 }
@@ -63,7 +67,7 @@ export function loadReportHistory(): ReportHistoryItem[] {
   }
 }
 
-function saveReportHistory(items: ReportHistoryItem[]) {
+export function saveReportHistory(items: ReportHistoryItem[]) {
   localStorage.setItem(REPORT_HISTORY_KEY, JSON.stringify(items.slice(0, MAX_REPORT_HISTORY)))
 }
 
@@ -83,44 +87,6 @@ function deleteFromSqlite(id: string) {
   void import('./db').then(({ dbDeleteReportHistory }) =>
     dbDeleteReportHistory(id).catch(() => {}),
   ).catch(() => {})
-}
-
-/**
- * 启动时从 SQLite 回读报告历史，与 localStorage 合并。
- * SQLite 优先（localStorage 可能因配额超限丢失），按 id 去重，
- * 按 createdAt 降序保留最近 MAX_REPORT_HISTORY 条，并写回 localStorage。
- */
-export function mergeReportHistoryFromSqlite(
-  sqliteRows: Array<{
-    id: string
-    created_at: string
-    report_type: string
-    template: string
-    content: string
-  }>,
-): ReportHistoryItem[] {
-  const sqliteItems: ReportHistoryItem[] = sqliteRows
-    .map(row => normalizeHistoryItem({
-      id: row.id,
-      createdAt: row.created_at,
-      type: row.report_type,
-      template: row.template,
-      content: row.content,
-    }))
-    .filter((item): item is ReportHistoryItem => item !== null)
-
-  const localItems = loadReportHistory()
-  // SQLite 优先：同 id 以 SQLite 为准，再补本地独有的
-  const seen = new Set(sqliteItems.map(i => i.id))
-  const merged = [...sqliteItems, ...localItems.filter(i => !seen.has(i.id))]
-  merged.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
-  const result = merged.slice(0, MAX_REPORT_HISTORY)
-  try {
-    localStorage.setItem(REPORT_HISTORY_KEY, JSON.stringify(result))
-  } catch {
-    // localStorage 写满不影响内存态，SQLite 仍是数据源
-  }
-  return result
 }
 
 export function addReportHistoryItem(

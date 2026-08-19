@@ -292,12 +292,12 @@ fn internal_server_binary(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn server_is_healthy() -> bool {
-    reqwest::blocking::Client::builder()
-        .timeout(Duration::from_millis(300))
-        .build()
-        .and_then(|client| client.get(format!("http://{INTERNAL_AW_HOST}:{INTERNAL_AW_PORT}/api/0/info")).send())
-        .map(|response| response.status().is_success())
-        .unwrap_or(false)
+    let address = format!("{INTERNAL_AW_HOST}:{INTERNAL_AW_PORT}");
+    address
+        .parse()
+        .ok()
+        .and_then(|socket| std::net::TcpStream::connect_timeout(&socket, Duration::from_millis(300)).ok())
+        .is_some()
 }
 
 fn format_unix_millis(secs: u64, millis: u32) -> String {

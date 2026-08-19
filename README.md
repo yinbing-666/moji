@@ -151,16 +151,6 @@ API Key 只保存在本机设置中，不应写入代码仓库、日志。
 │   │   └── db.rs                   # SQLite 持久化
 │   ├── capabilities/               # Tauri 权限配置
 │   └── tauri.conf.json             # Tauri 应用配置
-├── docs/
-│   ├── plan.md
-│   ├── specs/
-│   │   ├── product.md
-│   │   ├── boundary.md
-│   │   └── tech.md
-│   └── tech/
-│       ├── ai-pipeline.md
-│       ├── data.md
-│       └── screenshot.md
 └── README.md
 ```
 

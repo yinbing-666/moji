@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicholasgasior/tauri-config-schema/tauri-v2/schema.json",
   "productName": "墨记",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.xiaohei.daily",
   "build": {
     "beforeDevCommand": "npm run dev",
