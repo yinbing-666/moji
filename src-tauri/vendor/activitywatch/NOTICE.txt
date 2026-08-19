@@ -1,0 +1,10 @@
+ActivityWatch aw-server-rust 0.13.2
+
+The bundled aw-server-rust executable is unmodified and is licensed under the
+Mozilla Public License 2.0 (MPL-2.0).
+
+Source code: https://github.com/ActivityWatch/aw-server-rust
+License: https://www.mozilla.org/MPL/2.0/
+
+The source code is available from the URL above, as required by MPL-2.0
+section 3.2.

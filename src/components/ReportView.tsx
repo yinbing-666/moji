@@ -1,10 +1,21 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Activity } from '../stores/activityStore'
 import { useActivityStore } from '../stores/activityStore'
 import { categoryVisual } from '../utils/categoryStyles'
-import { dateStamp, exportReportAsMarkdown } from '../utils/export'
+import { exportReportAsMarkdown } from '../utils/export'
 import { formatDuration } from '../utils/format'
+import { todayDateKey, localDateKey } from '../utils/date'
+import { calculateReportQuality } from '../utils/reportQuality'
+import {
+  BUILTIN_TEMPLATES,
+  addCustomTemplate,
+  loadCustomTemplates,
+  removeCustomTemplate,
+  updateCustomTemplate,
+  type CustomTemplate,
+} from '../utils/templates'
 import { AwAnalytics } from './AwAnalytics'
+import { MarkdownReport } from './MarkdownReport'
 
 const REPORT_TYPE_LABEL: Record<string, string> = {
   daily: '日报',
@@ -18,6 +29,7 @@ interface ReportViewProps {
 
 export function ReportView({ activities }: ReportViewProps) {
   const {
+    settings,
     isGeneratingReport,
     generateDailyReport,
     lastReport,
@@ -26,9 +38,89 @@ export function ReportView({ activities }: ReportViewProps) {
     deleteReport,
   } = useActivityStore()
   const [copied, setCopied] = useState(false)
-  // 默认日期与筛选都用本地时区语义：timestamp 是 UTC ISO 串，
-  // startsWith 前缀匹配在东八区 0-8 点会把活动算错天
-  const [reportDate, setReportDate] = useState(() => dateStamp())
+  const [reportDate, setReportDate] = useState(todayDateKey)
+  const [selectedTemplate, setSelectedTemplate] = useState('standard')
+  const [customTemplates, setCustomTemplates] = useState<CustomTemplate[]>(loadCustomTemplates)
+  const [templateEditorOpen, setTemplateEditorOpen] = useState(false)
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null)
+  const [templateName, setTemplateName] = useState('')
+  const [templatePrompt, setTemplatePrompt] = useState('')
+  const [templateError, setTemplateError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'daily' | 'efficiency'>('daily')
+  const reportContentRef = useRef<HTMLElement | null>(null)
+  const isLocalMode = settings.dataSource === 'local'
+  const effectiveTemplate = isLocalMode && selectedTemplate.startsWith('custom:') ? 'standard' : selectedTemplate
+
+  useEffect(() => {
+    if (isLocalMode && selectedTemplate.startsWith('custom:')) {
+      setSelectedTemplate('standard')
+    }
+  }, [isLocalMode, selectedTemplate])
+
+  const templateLabel = (templateKey: string) => {
+    const builtin = BUILTIN_TEMPLATES.find(template => template.value === templateKey)
+    if (builtin) return builtin.label
+    if (templateKey.startsWith('custom:')) {
+      return customTemplates.find(template => template.id === templateKey.slice(7))?.name ?? '自定义模板'
+    }
+    return '标准'
+  }
+
+  const openNewTemplateEditor = () => {
+    setEditingTemplateId(null)
+    setTemplateName('')
+    setTemplatePrompt('')
+    setTemplateError(null)
+    setTemplateEditorOpen(true)
+  }
+
+  const openEditTemplateEditor = () => {
+    if (!selectedTemplate.startsWith('custom:')) return
+    const id = selectedTemplate.slice(7)
+    const template = customTemplates.find(item => item.id === id)
+    if (!template) return
+    setEditingTemplateId(id)
+    setTemplateName(template.name)
+    setTemplatePrompt(template.prompt)
+    setTemplateError(null)
+    setTemplateEditorOpen(true)
+  }
+
+  const closeTemplateEditor = () => {
+    setTemplateEditorOpen(false)
+    setEditingTemplateId(null)
+    setTemplateError(null)
+  }
+
+  const handleSaveTemplate = () => {
+    const name = templateName.trim()
+    const prompt = templatePrompt.trim()
+    if (!name || !prompt) {
+      setTemplateError('请填写模板名称和生成要求')
+      return
+    }
+
+    if (editingTemplateId) {
+      setCustomTemplates(updateCustomTemplate(editingTemplateId, name, prompt))
+    } else {
+      const previousIds = new Set(customTemplates.map(template => template.id))
+      const next = addCustomTemplate(name, prompt)
+      setCustomTemplates(next)
+      const created = next.find(template => !previousIds.has(template.id))
+      if (created) setSelectedTemplate(`custom:${created.id}`)
+    }
+    closeTemplateEditor()
+  }
+
+  const handleDeleteSelectedTemplate = () => {
+    if (!selectedTemplate.startsWith('custom:')) return
+    const id = selectedTemplate.slice(7)
+    const template = customTemplates.find(item => item.id === id)
+    if (!template || !window.confirm(`确定删除自定义模板“${template.name}”？`)) return
+    setCustomTemplates(removeCustomTemplate(id))
+    setSelectedTemplate('standard')
+    closeTemplateEditor()
+  }
 
   const handleCopyReport = async () => {
     if (!lastReport) return
@@ -43,14 +135,30 @@ export function ReportView({ activities }: ReportViewProps) {
 
   const handleDownloadReport = () => {
     if (!lastReport) return
-    const label = `${REPORT_TYPE_LABEL[lastReport.type] ?? '报告'}-${lastReport.createdAt.slice(0, 10)}`
+    const label = `${REPORT_TYPE_LABEL[lastReport.type] ?? '报告'}-${localDateKey(lastReport.createdAt)}`
     exportReportAsMarkdown(lastReport.content, label)
+  }
+
+  const handlePrintReport = () => {
+    if (!lastReport) return
+    window.print()
+  }
+
+  useEffect(() => {
+    if (lastReport && activeTab === 'daily') {
+      reportContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [lastReport, activeTab])
+
+  const handleDeleteReport = (id: string) => {
+    const item = reportHistory.find(report => report.id === id)
+    if (!item || !window.confirm('确定删除这份报告？删除后无法在历史记录中恢复。')) return
+    deleteReport(id)
   }
 
   /* P1优化: 报告数据聚合 */
   const reportData = useMemo(() => {
-    // timestamp 是 UTC ISO 串，先转成本地日期再与所选日期比对，避免错天
-    const dayActivities = activities.filter(a => dateStamp(new Date(a.timestamp)) === reportDate)
+    const dayActivities = activities.filter(a => localDateKey(a.timestamp) === reportDate)
     
     if (dayActivities.length === 0) {
       return null
@@ -92,6 +200,7 @@ export function ReportView({ activities }: ReportViewProps) {
     return {
       total: dayActivities.length,
       date: reportDate,
+      quality: calculateReportQuality(dayActivities),
       apps: Array.from(appMap.entries())
         .map(([app, data]) => ({ app, ...data, categories: Array.from(data.categories) }))
         .sort((a, b) => b.count - a.count),
@@ -104,7 +213,7 @@ export function ReportView({ activities }: ReportViewProps) {
   /* P1优化: 报告生成处理 */
   const handleGenerateReport = async () => {
     try {
-      await generateDailyReport(reportDate)
+      await generateDailyReport(reportDate, effectiveTemplate)
     } catch (err) {
       console.error('报告生成失败:', err)
     }
@@ -112,13 +221,25 @@ export function ReportView({ activities }: ReportViewProps) {
 
   /* P1优化: 报告页面布局 - 使用层级化卡片系统 */
   return (
-    <div className="space-y-6">
-      {/* 效率分析(基于 ActivityWatch Analytics Skill,任何数据源模式可用) */}
-      <AwAnalytics />
+    <div className="report-print-root space-y-6">
+      <nav className="report-no-print flex border-b border-gray-200" aria-label="报告类型">
+        <button type="button" onClick={() => setActiveTab('daily')} className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'daily' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>工作日报</button>
+        <button type="button" onClick={() => setActiveTab('efficiency')} className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'efficiency' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>效率分析</button>
+      </nav>
 
+      {activeTab === 'efficiency' ? (
+        <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+          <AwAnalytics activities={activities} />
+        </section>
+      ) : (<>
       {/* 报告控制栏 - 层级2：标准卡片 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
-        <div className="flex flex-wrap items-end justify-between gap-4">
+      <section className="report-no-print rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
+        {isLocalMode && (
+          <div className="mb-3 rounded-lg border border-teal-200 bg-teal-50/50 px-3 py-2 text-xs text-teal-800">
+            当前为无 LLM 模式，报告按固定格式在本地生成，不会调用 API。
+          </div>
+        )}
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="report-date" className="text-xs font-medium text-gray-500">选择日期</label>
             <input
@@ -128,6 +249,29 @@ export function ReportView({ activities }: ReportViewProps) {
               onChange={(e) => setReportDate(e.target.value)}
               className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
             />
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label htmlFor="report-template" className="text-xs font-medium text-gray-500">{isLocalMode ? '报告格式' : '报告模板'}</label>
+            <select
+              id="report-template"
+              value={effectiveTemplate}
+              onChange={(e) => setSelectedTemplate(e.target.value)}
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+            >
+              <optgroup label="内置模板">
+                {BUILTIN_TEMPLATES.map(template => (
+                  <option key={template.value} value={template.value}>{template.label}：{template.description}</option>
+                ))}
+              </optgroup>
+              {!isLocalMode && customTemplates.length > 0 && (
+                <optgroup label="自定义模板">
+                  {customTemplates.map(template => (
+                    <option key={template.id} value={`custom:${template.id}`}>{template.name}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
           </div>
 
           <button
@@ -140,14 +284,88 @@ export function ReportView({ activities }: ReportViewProps) {
                 : 'bg-brand-600 text-white hover:bg-brand-700'
             }`}
           >
-            {isGeneratingReport ? '生成中...' : 'AI 生成报告'}
+            {isGeneratingReport ? '生成中...' : isLocalMode ? '生成本地报告' : 'AI 生成报告'}
           </button>
         </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+          <span className="text-xs text-gray-500">当前：{templateLabel(effectiveTemplate)}</span>
+          {!isLocalMode && <button
+            type="button"
+            onClick={openNewTemplateEditor}
+            className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+          >
+            新建自定义模板
+          </button>}
+          {!isLocalMode && selectedTemplate.startsWith('custom:') && (
+            <>
+              <button
+                type="button"
+                onClick={openEditTemplateEditor}
+                className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+              >
+                编辑模板
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteSelectedTemplate}
+                className="rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
+              >
+                删除模板
+              </button>
+            </>
+          )}
+        </div>
+
+        {templateEditorOpen && (
+          <div className="mt-3 border-t border-gray-100 pt-3">
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="template-name" className="text-xs font-medium text-gray-500">模板名称</label>
+                <input
+                  id="template-name"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="例如：周会复盘"
+                  className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="template-prompt" className="text-xs font-medium text-gray-500">生成要求</label>
+                <textarea
+                  id="template-prompt"
+                  value={templatePrompt}
+                  onChange={(e) => setTemplatePrompt(e.target.value)}
+                  placeholder="描述报告重点、结构和语气"
+                  rows={3}
+                  className="resize-y rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                />
+              </div>
+            </div>
+            {templateError && <p className="mt-2 text-xs text-red-600">{templateError}</p>}
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={handleSaveTemplate}
+                className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700"
+              >
+                保存模板
+              </button>
+              <button
+                type="button"
+                onClick={closeTemplateEditor}
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* 报告内容展示：生成后或从历史打开 */}
       {lastReport && (
-        <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+        <section ref={reportContentRef} className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
             <div className="flex items-center gap-2.5">
               <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
@@ -161,8 +379,14 @@ export function ReportView({ activities }: ReportViewProps) {
                   minute: '2-digit',
                 })}
               </p>
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                {templateLabel(lastReport.template)}
+              </span>
+              <span className="rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-500">
+                当前为 {isLocalMode ? '固定格式模式' : 'AI 模式'}
+              </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="report-no-print flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => void handleCopyReport()}
@@ -177,17 +401,24 @@ export function ReportView({ activities }: ReportViewProps) {
               >
                 下载 Markdown
               </button>
+              <button
+                type="button"
+                onClick={handlePrintReport}
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+              >
+                打印 / PDF
+              </button>
             </div>
           </div>
-          <div className="max-h-[28rem] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
-            {lastReport.content}
+          <div className="report-content max-h-[32rem] overflow-y-auto">
+            <MarkdownReport content={lastReport.content} />
           </div>
         </section>
       )}
 
       {/* 报告历史：最近生成的报告可随时回看 */}
       {reportHistory.length > 0 && (
-        <section className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
+        <section className="report-no-print rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-h3 font-semibold text-gray-900">报告历史</h2>
             <span className="text-xs text-gray-400">最近 {reportHistory.length} 条</span>
@@ -217,11 +448,12 @@ export function ReportView({ activities }: ReportViewProps) {
                       hour: '2-digit',
                       minute: '2-digit',
                     })}
+                    {' · '}{templateLabel(item.template)}
                   </p>
                 </button>
                 <button
                   type="button"
-                  onClick={() => deleteReport(item.id)}
+                  onClick={() => handleDeleteReport(item.id)}
                   className="shrink-0 rounded-md px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                   title="删除这条报告"
                 >
@@ -245,7 +477,7 @@ export function ReportView({ activities }: ReportViewProps) {
       ) : (
         <>
           {/* P1优化: 统计概览 - 层级1：大圆角渐变背景 */}
-          <section className="grid gap-3 sm:grid-cols-3">
+          <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div className="rounded-2xl bg-gradient-to-br from-gray-50 to-white p-5 shadow-card">
               <p className="text-xs font-medium text-gray-500">总活动数</p>
               <p className="mt-1.5 text-h2 font-bold tabular-nums text-gray-900">{reportData.total}</p>
@@ -271,6 +503,15 @@ export function ReportView({ activities }: ReportViewProps) {
                   </>
                 )}
               </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
+              <p className="text-xs font-medium text-gray-500">报告质量</p>
+              <div className="mt-1.5 flex items-baseline gap-1">
+                <p className="text-lg font-semibold tabular-nums text-gray-900">{reportData.quality.score}</p>
+                <span className="text-xs text-gray-400">/ 100</span>
+              </div>
+              <p className="mt-1 text-xs text-gray-500" title={reportData.quality.detail}>{reportData.quality.label}</p>
             </div>
           </section>
 
@@ -396,6 +637,7 @@ export function ReportView({ activities }: ReportViewProps) {
           </section>
         </>
       )}
+      </>)}
     </div>
   )
 }

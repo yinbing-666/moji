@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useActivityStore } from '../stores/activityStore'
-import type { BackgroundPreset } from '../stores/activityStore'
+import type { BackgroundPreset, DataSource, ThemeMode } from '../stores/activityStore'
+import { todayDateKey } from '../utils/date'
+import { getAppearancePreview } from '../utils/appearance'
 import {
   dbDiagnoseDb,
   dbLoadBackup,
@@ -16,7 +18,6 @@ export function Settings() {
     updateSettings,
     testAiConnection,
     connectionTestResult,
-    syncFromAw,
     importActivitiesFromJson,
     exportActivitiesAsJson,
     clearAllActivities,
@@ -38,15 +39,22 @@ export function Settings() {
     setHasUnsavedChanges(false)
   }, [settings])
 
-  // 挂载时刷新数据库诊断信息（null = 后端不可调用，如纯浏览器调试模式）
-  useEffect(() => {
-    void (async () => {
+  const refreshDbInfo = useCallback(async () => {
+    try {
       const diag = await dbDiagnoseDb()
       const hasBackup = await dbLoadBackup()
       setDbStatus(diag ?? '未检测到桌面后端（浏览器模式 SQLite 不可用）')
       setBackupExists(Boolean(hasBackup))
-    })()
+    } catch (error) {
+      setDbStatus(`数据库诊断失败：${error instanceof Error ? error.message : String(error)}`)
+      setBackupExists(false)
+    }
   }, [])
+
+  // 挂载时刷新数据库诊断信息（null = 后端不可调用，如纯浏览器调试模式）
+  useEffect(() => {
+    void refreshDbInfo()
+  }, [refreshDbInfo])
 
   /* P1优化: 表单字段更新处理 */
   const updateField = useCallback(<K extends keyof typeof localSettings>(
@@ -67,30 +75,27 @@ export function Settings() {
   const handleTestConnection = useCallback(async () => {
     setIsTestingConnection(true)
     try {
-      await testAiConnection()
+      await testAiConnection({
+        apiKey: localSettings.apiKey,
+        baseUrl: localSettings.baseUrl,
+        textModel: localSettings.textModel,
+      })
     } catch (err) {
       console.error('连接测试失败:', err)
     } finally {
       setIsTestingConnection(false)
     }
-  }, [testAiConnection])
+  }, [localSettings.apiKey, localSettings.baseUrl, localSettings.textModel, testAiConnection])
 
   /* 数据库备份/恢复 */
-  const refreshDbInfo = useCallback(async () => {
-    const diag = await dbDiagnoseDb()
-    const hasBackup = await dbLoadBackup()
-    setDbStatus(diag ?? '未检测到桌面后端（浏览器模式 SQLite 不可用）')
-    setBackupExists(Boolean(hasBackup))
-  }, [])
-
   const handleBackupNow = useCallback(async () => {
     setBackupBusy(true)
     setBackupMsg(null)
     try {
-      // invoke 不抛错即成功；返回值为备份文件字节数
-      const bytes = await dbSaveBackup()
+      const ok = await dbSaveBackup()
+      if (!ok) throw new Error('备份失败，请确认已在桌面端运行')
       await refreshDbInfo()
-      setBackupMsg(`备份已保存到本机应用数据目录（${(bytes / 1024).toFixed(1)} KB）`)
+      setBackupMsg('备份已保存到本机应用数据目录')
     } catch (err) {
       setBackupMsg(err instanceof Error ? err.message : String(err))
     } finally {
@@ -122,12 +127,12 @@ export function Settings() {
 
     try {
       const text = await file.text()
-      const data = JSON.parse(text)
-      await importActivitiesFromJson(data)
-      e.target.value = '' // 重置input
+      await importActivitiesFromJson(text)
     } catch (err) {
       console.error('导入失败:', err)
       alert('导入失败：请检查文件格式是否正确')
+    } finally {
+      e.target.value = ''
     }
   }, [importActivitiesFromJson])
 
@@ -139,11 +144,11 @@ export function Settings() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `moji-activities-${new Date().toISOString().slice(0, 10)}.json`
+      a.download = `moji-activities-${todayDateKey()}.json`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      window.setTimeout(() => URL.revokeObjectURL(url), 0)
     } catch (err) {
       console.error('导出失败:', err)
     }
@@ -161,17 +166,22 @@ export function Settings() {
 
   /* P1优化: 数据源切换 */
   const dataSourceOptions = [
-    { value: 'window_text' as const, label: '窗口文本 + AI 识别', desc: '本地读取窗口文本识别活动，不截图' },
-    { value: 'aw' as const, label: 'ActivityWatch', desc: '从 AW 同步桌面活动数据' },
-    { value: 'both' as const, label: '双源并行', desc: '窗口文本 AI 识别 + AW 时间线同时采集，去重合并' },
+    { value: 'llm' as const, label: '有 LLM', desc: '读取窗口文本并用模型识别活动，报告也可由模型生成' },
+    { value: 'local' as const, label: '无 LLM', desc: '只用本地规则记录活动，报告按固定格式生成，不需要 API' },
   ]
 
   const backgroundPresets: { value: BackgroundPreset; label: string; desc: string }[] = [
-    { value: 'plain', label: '纯色', desc: '默认浅灰背景' },
-    { value: 'mint', label: '薄荷绿', desc: '清新淡绿渐变' },
+    { value: 'plain', label: '纯色', desc: '简洁纯色背景' },
+    { value: 'mint', label: '薄荷绿', desc: '柔和绿色渐变' },
     { value: 'sky', label: '天空蓝', desc: '宁静蓝色渐变' },
-    { value: 'graphite', label: '石墨灰', desc: '专业灰色渐变' },
+    { value: 'graphite', label: '石墨灰', desc: '中性灰色渐变' },
     { value: 'custom', label: '自定义图片', desc: '上传本地背景图' },
+  ]
+
+  const themeModes: { value: ThemeMode; label: string }[] = [
+    { value: 'system', label: '跟随系统' },
+    { value: 'light', label: '浅色' },
+    { value: 'dark', label: '深色' },
   ]
 
   return (
@@ -199,7 +209,7 @@ export function Settings() {
                   name="dataSource"
                   value={opt.value}
                   checked={localSettings.dataSource === opt.value}
-                  onChange={e => updateField('dataSource', e.target.value as 'window_text' | 'aw')}
+                  onChange={e => updateField('dataSource', e.target.value as DataSource)}
                   className="mt-0.5 h-4 w-4 text-brand-600 focus:ring-brand-500"
                 />
                 <div>
@@ -212,7 +222,7 @@ export function Settings() {
         </fieldset>
 
         {/* API配置 - 条件渲染 */}
-        {localSettings.dataSource !== 'aw' && (
+        {localSettings.dataSource !== 'local' && (
           <div className="space-y-4 rounded-lg bg-gray-50/50 p-4">
             <div>
               <label htmlFor="api-key" className="block text-sm font-medium text-gray-700 mb-1">
@@ -262,7 +272,10 @@ export function Settings() {
               <button
                 type="button"
                 onClick={handleTestConnection}
-                disabled={isTestingConnection || !localSettings.apiKey.trim()}
+                disabled={isTestingConnection
+                  || !localSettings.apiKey.trim()
+                  || !localSettings.baseUrl.trim()
+                  || !localSettings.textModel.trim()}
                 className="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isTestingConnection ? '测试中...' : '测试连接'}
@@ -279,48 +292,9 @@ export function Settings() {
           </div>
         )}
 
-        {/* AW同步配置 */}
-        {localSettings.dataSource !== 'window_text' && (
-          <div className="space-y-4 rounded-lg bg-teal-50/30 p-4 border border-teal-100">
-            <div>
-              <label htmlFor="aw-host" className="block text-sm font-medium text-gray-700 mb-1">
-                AW 服务地址
-              </label>
-              <input
-                id="aw-host"
-                type="text"
-                value={localSettings.awHost || ''}
-                onChange={e => updateField('awHost', e.target.value)}
-                placeholder="localhost:5600"
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-100"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                ActivityWatch 默认端口 5600，确保服务已启动
-              </p>
-            </div>
-
-            <div>
-              <label htmlFor="aw-sync-minutes" className="block text-sm font-medium text-gray-700 mb-1">
-                同步间隔（分钟）
-              </label>
-              <input
-                id="aw-sync-minutes"
-                type="number"
-                min={1}
-                max={60}
-                value={localSettings.awSyncMinutes || 5}
-                onChange={e => updateField('awSyncMinutes', parseInt(e.target.value) || 5)}
-                className="w-full max-w-[120px] rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-100"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => syncFromAw().catch(() => {})}
-              className="rounded-md bg-teal-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-teal-700 transition-colors"
-            >
-              立即同步测试
-            </button>
+        {localSettings.dataSource === 'local' && (
+          <div className="rounded-lg border border-teal-100 bg-teal-50/30 p-4 text-sm text-teal-800">
+            无 LLM 模式使用本地分类规则，不发送窗口内容。ActivityWatch 由墨记内置并随应用自动运行，无需安装或配置。
           </div>
         )}
       </section>
@@ -460,6 +434,31 @@ export function Settings() {
       <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
         <h2 className="text-h3 font-semibold text-gray-900 mb-4">外观与主题</h2>
 
+        <fieldset className="mb-4">
+          <legend className="mb-2 text-sm font-medium text-gray-700">颜色模式</legend>
+          <div className="grid grid-cols-3 rounded-lg border border-gray-200 bg-gray-50 p-1">
+            {themeModes.map(mode => (
+              <button
+                key={mode.value}
+                type="button"
+                aria-pressed={localSettings.appearance?.themeMode === mode.value}
+                onClick={() => updateField('appearance', {
+                  ...localSettings.appearance,
+                  themeMode: mode.value,
+                })}
+                className={`min-h-8 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                  localSettings.appearance?.themeMode === mode.value
+                    ? 'bg-surface text-gray-900 shadow-sm ring-1 ring-gray-200/80'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs text-gray-400">跟随系统会在 Windows 主题变化时自动切换</p>
+        </fieldset>
+
         {/* 背景预设选择 - 卡片网格 */}
         <fieldset className="mb-4">
           <legend className="text-sm font-medium text-gray-700 mb-2">背景风格</legend>
@@ -483,7 +482,13 @@ export function Settings() {
                 <div 
                   className="mb-2 h-12 w-full rounded-md bg-gradient-to-br"
                   style={{
-                    background: getBackgroundPreview(preset.value),
+                    background: getAppearancePreview(
+                      preset.value,
+                      localSettings.appearance?.themeMode === 'system'
+                        ? document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
+                        : localSettings.appearance?.themeMode ?? 'light',
+                      localSettings.appearance?.customBackground,
+                    ),
                   }}
                 />
                 <span className="text-xs font-medium text-gray-900 block">{preset.label}</span>
@@ -554,7 +559,7 @@ export function Settings() {
               导入 JSON
               <input
                 type="file"
-                accept=".json,application/json"
+                accept=".json,.md,.markdown,application/json,text/markdown"
                 onChange={handleImportFile}
                 className="hidden"
               />
@@ -659,15 +664,4 @@ export function Settings() {
       )}
     </div>
   )
-}
-
-/* 辅助函数：获取背景预览样式 */
-function getBackgroundPreview(preset: BackgroundPreset): string {
-  switch (preset) {
-    case 'mint': return 'linear-gradient(135deg, #d4f5e9 0%, #e8f5e9 50%, #f0f7f4 100%)'
-    case 'sky': return 'linear-gradient(135deg, #dceefb 0%, #e8f0fe 50%, #f0f4f8 100%)'
-    case 'graphite': return 'linear-gradient(135deg, #e8eaed 0%, #f1f3f4 50%, #f8f9fa 100%)'
-    case 'custom': return 'repeating-conic-gradient(#f3f4f6 0% 25%, #fff 0% 50%) 50% / 10px 10px'
-    default: return '#fafafa'
-  }
 }

@@ -4,12 +4,12 @@
  * [P0优化] 业务逻辑100%保留，核心采集流程不变
  * [P1优化] 锁屏检测、空闲跳过、本地降级分类等策略完整保留
  */
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useScreenshot, type ScreenshotCaptureResult } from './useScreenshot'
 import { useActivityStore, type Activity } from '../stores/activityStore'
 import { analyzeWindowText, classifyLocally } from '../utils/ai'
 import { captureVisibleWindows, type CapturedWindow } from '../utils/screenshot'
-import { dbGetIdleSeconds, dbIsScreenLocked, dbReadWindowText } from '../utils/db'
+import { dbGetIdleSeconds, dbIsScreenLocked, dbReadWindowText, dbWriteAwWindowEvent } from '../utils/db'
 
 /** 空闲超过该秒数则跳过本轮采集（约 10 分钟） */
 const IDLE_SKIP_SECONDS = 600
@@ -61,6 +61,12 @@ function selectWindowsForAnalysis(windows: CapturedWindow[], maxWindows: number)
 export function useAutoCapture() {
   const { settings, addActivity, setIsAnalyzing } = useActivityStore()
   const analyzingRef = useRef(false)
+  const hasAiConfig = Boolean(
+    settings.apiKey.trim()
+    && settings.baseUrl.trim()
+    && settings.textModel.trim(),
+  )
+  const localMode = settings.dataSource === 'local'
 
   const captureAllowedWindows = useCallback(async (): Promise<ScreenshotCaptureResult> => {
     // 锁屏或长时间空闲时跳过，避免浪费 API 与产生无意义记录
@@ -78,7 +84,13 @@ export function useAutoCapture() {
     }
 
     // 截图仅在用户开启"保存截图缩略图"时才采集；活动识别本身只依赖窗口文本
-    const windows = await captureVisibleWindows(settings.excludedKeywords, settings.saveScreenshotThumbnails)
+    // 在 Rust 端先过滤，确保开启缩略图时排除窗口也不会先被截屏。
+    const captureExclusions = [
+      ...settings.excludedKeywords,
+      ...settings.excludedApps,
+      ...settings.excludedTitlePatterns,
+    ]
+    const windows = await captureVisibleWindows(captureExclusions, settings.saveScreenshotThumbnails)
 
     // 前端二次过滤：排除指定应用名 + 标题关键词
     const excludedApps = settings.excludedApps ?? []
@@ -113,9 +125,9 @@ export function useAutoCapture() {
   const handleCapture = useCallback(async (result: ScreenshotCaptureResult) => {
     if (analyzingRef.current) return
 
-    if (!settings.apiKey.trim()) {
-      // 配置缺失是系统状态，不写入活动数据流（避免污染时间轴和统计），只记录日志
-      console.warn('墨记：未配置 API Key，本轮采集已跳过 AI 分析')
+    if (!localMode && !hasAiConfig) {
+      // 有 LLM 模式配置缺失时不写入活动数据流，避免污染时间轴和统计。
+      console.warn('墨记：AI 配置不完整，本轮采集已跳过分析')
       return
     }
 
@@ -136,6 +148,22 @@ export function useAutoCapture() {
           | { ok: false; capturedWindow: CapturedWindow; error: string }
         > => {
           try {
+            if (localMode) {
+              const local = classifyLocally(capturedWindow.process_name, capturedWindow.title)
+              const thumbnail = settings.saveScreenshotThumbnails && capturedWindow.image_base64
+                ? await compressBase64(capturedWindow.image_base64, 320)
+                : undefined
+              return {
+                ok: true,
+                capturedWindow,
+                category: local.category,
+                app: local.app || capturedWindow.process_name,
+                title: local.title || capturedWindow.title,
+                description: local.description,
+                screenshotBase64: thumbnail,
+              }
+            }
+
             // 读取窗口内 UIA 文本（本地、只读，替代截图）
             const windowText = await dbReadWindowText(capturedWindow.hwnd, 2000)
 
@@ -194,17 +222,35 @@ export function useAutoCapture() {
           })
         }
       }
+
+      // ActivityWatch 的时间线仅应写入前台窗口，避免多窗口预览重复累计时长。
+      const foreground = capturedWindows.find(window => window.is_foreground) ?? capturedWindows[0]
+      if (foreground) {
+        void dbWriteAwWindowEvent({
+          app: foreground.process_name,
+          title: foreground.title,
+          duration: settings.intervalSeconds,
+          timestamp: new Date().toISOString(),
+        })
+      }
     } finally {
       analyzingRef.current = false
       setIsAnalyzing(false)
     }
-  }, [settings.apiKey, settings.baseUrl, settings.textModel, settings.saveScreenshotThumbnails, addActivity, setIsAnalyzing])
+  }, [hasAiConfig, localMode, settings.apiKey, settings.baseUrl, settings.textModel, settings.saveScreenshotThumbnails, settings.intervalSeconds, addActivity, setIsAnalyzing])
 
-  return useScreenshot({
+  const screenshot = useScreenshot({
     intervalSeconds: settings.intervalSeconds,
-    // 仅在启用了窗口文本采集(AW 模式不启动)时自动采集
-    autoStart: Boolean(settings.autoStart && settings.apiKey.trim() && settings.dataSource !== 'aw'),
+    // 有 LLM 和无 LLM 模式都使用墨记自己的窗口采集；无 LLM 只跳过 UIA/网络分析。
+    autoStart: Boolean(settings.autoStart && (localMode || hasAiConfig)),
     capture: captureAllowedWindows,
     onCapture: handleCapture,
   })
+
+  // 切换到有 LLM 且配置失效时，停止已经运行中的窗口采集计时器。
+  useEffect(() => {
+    if (!localMode && !hasAiConfig) screenshot.stop()
+  }, [hasAiConfig, localMode, screenshot.stop])
+
+  return screenshot
 }

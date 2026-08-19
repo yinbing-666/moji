@@ -1,5 +1,17 @@
 use serde::{Deserialize, Serialize};
-use windows::Win32::System::Time::GetTimeZoneInformation;
+use std::{
+    path::PathBuf,
+    process::{Child, Command},
+    sync::Mutex,
+    time::Duration,
+};
+use tauri::{AppHandle, Manager};
+
+pub const INTERNAL_AW_HOST: &str = "127.0.0.1";
+pub const INTERNAL_AW_PORT: u16 = 5601;
+const INTERNAL_BUCKET_ID: &str = "aw-watcher-window_moji";
+
+pub struct InternalAwServer(pub Mutex<Option<Child>>);
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AwEvent {
@@ -15,16 +27,6 @@ pub struct AwSyncResult {
     pub fetched_at: String,
 }
 
-/// 返回本地时区相对 UTC 的偏移分钟数（东八区返回 480）
-fn local_offset_minutes() -> i32 {
-    unsafe {
-        let mut tz = std::mem::zeroed();
-        GetTimeZoneInformation(&mut tz);
-        // Bias 是 UTC=本地 + Bias，即本地 = UTC - Bias，偏移 = -Bias
-        -tz.Bias
-    }
-}
-
 /// 拉取 ActivityWatch 的 window bucket 事件。
 /// 返回原始事件 JSON（由前端做分类映射和去重写入）。
 #[tauri::command]
@@ -34,8 +36,11 @@ pub async fn aw_fetch_events(
     bucket_prefix: Option<String>,
     limit: Option<u32>,
 ) -> Result<AwSyncResult, String> {
-    let host = host.unwrap_or_else(|| "127.0.0.1".to_string());
-    let port = port.unwrap_or(5600);
+    let host = host
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| INTERNAL_AW_HOST.to_string());
+    let port = port.unwrap_or(INTERNAL_AW_PORT);
     let bucket_prefix = bucket_prefix.unwrap_or_else(|| "aw-watcher-window".to_string());
     let limit = limit.unwrap_or(1000);
 
@@ -52,6 +57,8 @@ pub async fn aw_fetch_events(
         .send()
         .await
         .map_err(|e| format!("连接 ActivityWatch 失败（{}:{}）: {}", host, port, e))?
+        .error_for_status()
+        .map_err(|e| format!("ActivityWatch buckets 请求失败: {e}"))?
         .json()
         .await
         .map_err(|e| format!("解析 buckets 响应失败: {}", e))?;
@@ -76,7 +83,7 @@ pub async fn aw_fetch_events(
 
     let bucket_id = bucket_id.ok_or_else(|| {
         format!(
-            "未找到 ActivityWatch 窗口 bucket（前缀 {}）。请确认 ActivityWatch 正在运行且 aw-watcher-window 已启动",
+            "未找到内置 ActivityWatch 窗口数据（前缀 {}）",
             bucket_prefix
         )
     })?;
@@ -93,6 +100,8 @@ pub async fn aw_fetch_events(
         .send()
         .await
         .map_err(|e| format!("拉取窗口事件失败: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("ActivityWatch events 请求失败: {e}"))?
         .json()
         .await
         .map_err(|e| format!("解析事件响应失败: {}", e))?;
@@ -110,8 +119,11 @@ pub async fn aw_health(
     host: Option<String>,
     port: Option<u16>,
 ) -> Result<serde_json::Value, String> {
-    let host = host.unwrap_or_else(|| "127.0.0.1".to_string());
-    let port = port.unwrap_or(5600);
+    let host = host
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| INTERNAL_AW_HOST.to_string());
+    let port = port.unwrap_or(INTERNAL_AW_PORT);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
@@ -123,11 +135,67 @@ pub async fn aw_health(
         .send()
         .await
         .map_err(|e| format!("ActivityWatch 未运行（{}:{}）: {}", host, port, e))?
+        .error_for_status()
+        .map_err(|e| format!("ActivityWatch 健康检查失败: {e}"))?
         .json()
         .await
         .map_err(|e| format!("解析 info 响应失败: {}", e))?;
 
     Ok(resp)
+}
+
+/// 将墨记采集的前台窗口写入内置 ActivityWatch bucket。
+/// 失败不影响墨记本地活动记录，调用方可安全降级。
+#[tauri::command]
+pub async fn aw_write_window_event(input: AwWindowEventInput) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(3))
+        .build()
+        .map_err(|e| format!("构建 ActivityWatch HTTP 客户端失败: {e}"))?;
+    let base = format!("http://{INTERNAL_AW_HOST}:{INTERNAL_AW_PORT}");
+    let bucket_url = format!("{base}/api/0/buckets/{}", urlencode(INTERNAL_BUCKET_ID));
+    let bucket = serde_json::json!({
+        "id": INTERNAL_BUCKET_ID,
+        "type": "currentwindow",
+        "client": "moji",
+        "hostname": "moji",
+        "created": chrono_now_iso(),
+    });
+
+    let bucket_status = client
+        .get(&bucket_url)
+        .send()
+        .await
+        .map_err(|e| format!("检查内置 ActivityWatch 数据桶失败: {e}"))?
+        .status();
+    if bucket_status == reqwest::StatusCode::NOT_FOUND {
+        client
+            .post(&bucket_url)
+            .json(&bucket)
+            .send()
+            .await
+            .map_err(|e| format!("创建内置 ActivityWatch 数据桶失败: {e}"))?
+            .error_for_status()
+            .map_err(|e| format!("创建内置 ActivityWatch 数据桶失败: {e}"))?;
+    } else if !bucket_status.is_success() {
+        return Err(format!("检查内置 ActivityWatch 数据桶失败: HTTP {bucket_status}"));
+    }
+
+    let event = serde_json::json!({
+        "timestamp": input.timestamp,
+        "duration": input.duration.clamp(1.0, 3600.0),
+        "data": { "app": input.app, "title": input.title },
+    });
+    client
+        .post(format!("{bucket_url}/events"))
+        .json(&vec![event])
+        .send()
+        .await
+        .map_err(|e| format!("写入内置 ActivityWatch 活动失败: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("写入内置 ActivityWatch 活动失败: {e}"))?;
+
+    Ok(())
 }
 
 fn urlencode(s: &str) -> String {
@@ -148,24 +216,98 @@ fn urlencode(s: &str) -> String {
 }
 
 fn chrono_now_iso() -> String {
+    // 不用额外依赖 chrono，按 UTC 输出与末尾 Z 一致的 ISO 时间。
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
-    let secs = now.as_secs();
-    let millis = now.subsec_millis();
-    let offset_min = local_offset_minutes();
-    let local_secs = (secs as i64) + (offset_min as i64) * 60;
-    let local_secs = if local_secs >= 0 { local_secs as u64 } else { 0 };
-    let days = local_secs / 86400;
-    let rem = local_secs % 86400;
+    format_unix_millis(now.as_secs(), now.subsec_millis())
+}
+
+#[derive(Deserialize)]
+pub struct AwWindowEventInput {
+    pub app: String,
+    pub title: String,
+    pub duration: f64,
+    pub timestamp: String,
+}
+
+/// 启动随墨记分发的 ActivityWatch server。采集器仍由墨记管理，不需要外部 watcher。
+pub fn start_internal_server(app: &AppHandle) -> Result<InternalAwServer, String> {
+    if server_is_healthy() {
+        return Ok(InternalAwServer(Mutex::new(None)));
+    }
+
+    let binary = internal_server_binary(app)?;
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取 ActivityWatch 数据目录: {e}"))?
+        .join("activitywatch");
+    std::fs::create_dir_all(&data_dir)
+        .map_err(|e| format!("无法创建 ActivityWatch 数据目录: {e}"))?;
+
+    let child = Command::new(&binary)
+        .arg("--host")
+        .arg(INTERNAL_AW_HOST)
+        .arg("--port")
+        .arg(INTERNAL_AW_PORT.to_string())
+        .arg("--dbpath")
+        .arg(&data_dir)
+        .arg("--device-id")
+        .arg("moji")
+        .arg("--no-legacy-import")
+        .spawn()
+        .map_err(|e| format!("启动内置 ActivityWatch 服务失败（{}）: {e}", binary.display()))?;
+
+    Ok(InternalAwServer(Mutex::new(Some(child))))
+}
+
+pub fn stop_internal_server(app: &AppHandle) {
+    let Some(server) = app.try_state::<InternalAwServer>() else {
+        return;
+    };
+    let Ok(mut child) = server.0.lock() else {
+        return;
+    };
+    if let Some(mut child) = child.take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
+fn internal_server_binary(app: &AppHandle) -> Result<PathBuf, String> {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut candidates = Vec::new();
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.join("aw-server-rust.exe"));
+    }
+    if let Some(project_root) = manifest.parent() {
+        candidates.push(project_root.join("vendor/activitywatch/aw-server-rust.exe"));
+    }
+
+    candidates
+        .into_iter()
+        .find(|path| path.exists())
+        .ok_or_else(|| "内置 ActivityWatch 服务文件缺失，无法启动采集服务".to_string())
+}
+
+fn server_is_healthy() -> bool {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_millis(300))
+        .build()
+        .and_then(|client| client.get(format!("http://{INTERNAL_AW_HOST}:{INTERNAL_AW_PORT}/api/0/info")).send())
+        .map(|response| response.status().is_success())
+        .unwrap_or(false)
+}
+
+fn format_unix_millis(secs: u64, millis: u32) -> String {
+    let days = secs / 86400;
+    let rem = secs % 86400;
     let (h, m, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
     let (y, mo, d) = civil_from_days(days as i64);
-    let offset_h = offset_min.abs() / 60;
-    let offset_m = offset_min.abs() % 60;
-    let sign = if offset_min >= 0 { '+' } else { '-' };
     format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}{}{:02}:{:02}",
-        y, mo, d, h, m, s, millis, sign, offset_h, offset_m
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
+        y, mo, d, h, m, s, millis
     )
 }
 
@@ -180,5 +322,21 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_unix_millis, urlencode};
+
+    #[test]
+    fn formats_utc_timestamp_with_z_suffix() {
+        assert_eq!(format_unix_millis(0, 0), "1970-01-01T00:00:00.000Z");
+        assert_eq!(format_unix_millis(8 * 3600, 123), "1970-01-01T08:00:00.123Z");
+    }
+
+    #[test]
+    fn encodes_non_ascii_bucket_ids() {
+        assert_eq!(urlencode("aw_测试"), "aw_%E6%B5%8B%E8%AF%95");
+    }
 }
 

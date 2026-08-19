@@ -27,6 +27,7 @@ pub fn run() {
                 .expect("failed to initialize SQLite database");
 
             app.manage(Database(Mutex::new(conn)));
+            app.manage(aw::start_internal_server(app.handle())?);
 
             // 系统托盘：常驻后台采集，关窗不退出
             let show = MenuItem::with_id(app, "show", "显示墨记", true, None::<&str>)?;
@@ -107,15 +108,20 @@ pub fn run() {
             // activitywatch
             aw::aw_fetch_events,
             aw::aw_health,
+            aw::aw_write_window_event,
             // uia text extraction (vision-free activity analysis)
             uia::read_window_text,
             // ai chat completions proxy (bypasses CORS)
             ai::chat_completions,
-            // activitywatch analytics skill integration
+            // 保留 HTML 导出兼容 IPC；主界面使用内置本地报告。
             aw_analytics::run_aw_analytics,
             aw_analytics::open_aw_report,
-            aw_analytics::launch_activitywatch,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building Tauri application")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                aw::stop_internal_server(app);
+            }
+        });
 }

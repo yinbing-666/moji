@@ -184,8 +184,18 @@ export async function dbAwHealth(options?: {
 }): Promise<{ hostname?: string; version?: string } | null> {
   return call<{ hostname?: string; version?: string }>('aw_health', {
     host: options?.host ?? '127.0.0.1',
-    port: options?.port ?? 5600,
+    port: options?.port ?? 5601,
   })
+}
+
+/** 写入墨记内置的 ActivityWatch 服务。失败不影响本地活动记录。 */
+export async function dbWriteAwWindowEvent(input: {
+  app: string
+  title: string
+  duration: number
+  timestamp: string
+}): Promise<boolean> {
+  return (await call('aw_write_window_event', { input })) !== null
 }
 
 // ── ActivityWatch Analytics (效率报告) ──
@@ -201,6 +211,7 @@ export interface AwAnalyticsResult {
   deep_work_blocks: number
   levels: Array<{ level: string; seconds: number; percent: number; points: number }>
   report_json: string
+  report_content: string
   report_html: string
 }
 
@@ -212,11 +223,6 @@ export async function runAwAnalytics(period: string): Promise<AwAnalyticsResult 
 /** 用系统默认浏览器打开本地 HTML 报告 */
 export async function openAwReport(path: string): Promise<boolean> {
   return (await call('open_aw_report', { path })) !== null
-}
-
-/** 探测并启动 ActivityWatch,返回启动路径;失败返回 null */
-export async function launchActivitywatch(): Promise<string | null> {
-  return call<string>('launch_activitywatch')
 }
 
 // ── System Detection ──
