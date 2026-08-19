@@ -97,6 +97,8 @@ cargo check
 npm run tauri build
 ```
 
+> **内置 ActivityWatch**：应用内置 `aw-server-rust`（0.13.2，MPL-2.0），随安装包分发，无需单独安装。该二进制约 27MB，**不纳入 git 仓库**（见 `THIRD_PARTY_NOTICES.md`）：从 ActivityWatch 官方构建获取后放到 `src-tauri/vendor/activitywatch/` 位置即可正常构建打包，本地文件缺失时应用会以「数据精度略低」模式降级运行。
+
 开发服务默认地址为 `http://127.0.0.1:1420/`。
 
 ## API Key 配置
