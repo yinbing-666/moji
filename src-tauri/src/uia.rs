@@ -237,14 +237,28 @@ fn walk_element(
         }
     }
 
-    // 深度优先遍历子元素（深度 +1，超出上限即停止）
-    if let Ok(child) = unsafe { walker.GetFirstChildElement(element) } {
-        walk_element(walker, &child, lines, seen, byte_budget, element_count, depth + 1);
+    if *byte_budget == 0 || depth >= MAX_WALK_DEPTH {
+        return;
     }
 
-    // 兄弟元素（同深度）
-    if let Ok(next) = unsafe { walker.GetNextSiblingElement(element) } {
-        walk_element(walker, &next, lines, seen, byte_budget, element_count, depth);
+    // 仅在当前父元素的子元素列表内迭代兄弟节点，避免遍历初始窗口根元素的桌面级兄弟窗口。
+    let mut child = unsafe { walker.GetFirstChildElement(element) }.ok();
+    while let Some(current) = child {
+        walk_element(
+            walker,
+            &current,
+            lines,
+            seen,
+            byte_budget,
+            element_count,
+            depth + 1,
+        );
+
+        if *byte_budget == 0 {
+            break;
+        }
+
+        child = unsafe { walker.GetNextSiblingElement(&current) }.ok();
     }
 }
 

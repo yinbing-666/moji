@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
+    io::{Read, Write},
     path::PathBuf,
     process::{Child, Command},
     sync::Mutex,
@@ -10,6 +11,7 @@ use tauri::{AppHandle, Manager};
 pub const INTERNAL_AW_HOST: &str = "127.0.0.1";
 pub const INTERNAL_AW_PORT: u16 = 5601;
 const INTERNAL_BUCKET_ID: &str = "aw-watcher-window_moji";
+const INTERNAL_DEVICE_ID: &str = "moji";
 
 pub struct InternalAwServer(pub Mutex<Option<Child>>);
 
@@ -51,6 +53,10 @@ pub async fn aw_fetch_events(
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
+
+    if host == INTERNAL_AW_HOST && port == INTERNAL_AW_PORT {
+        verify_internal_server_identity(&client).await?;
+    }
 
     let buckets: serde_json::Value = client
         .get(format!("{}/api/0/buckets/", base))
@@ -141,6 +147,10 @@ pub async fn aw_health(
         .await
         .map_err(|e| format!("解析 info 响应失败: {}", e))?;
 
+    if host == INTERNAL_AW_HOST && port == INTERNAL_AW_PORT {
+        validate_internal_server_identity(&resp)?;
+    }
+
     Ok(resp)
 }
 
@@ -153,6 +163,10 @@ pub async fn aw_write_window_event(input: AwWindowEventInput) -> Result<(), Stri
         .build()
         .map_err(|e| format!("构建 ActivityWatch HTTP 客户端失败: {e}"))?;
     let base = format!("http://{INTERNAL_AW_HOST}:{INTERNAL_AW_PORT}");
+
+    // 在发送任何包含应用名和窗口标题的数据前，先校验服务身份。
+    verify_internal_server_identity(&client).await?;
+
     let bucket_url = format!("{base}/api/0/buckets/{}", urlencode(INTERNAL_BUCKET_ID));
     let bucket = serde_json::json!({
         "id": INTERNAL_BUCKET_ID,
@@ -198,6 +212,50 @@ pub async fn aw_write_window_event(input: AwWindowEventInput) -> Result<(), Stri
     Ok(())
 }
 
+async fn verify_internal_server_identity(client: &reqwest::Client) -> Result<(), String> {
+    let info: serde_json::Value = client
+        .get(format!(
+            "http://{}:{}/api/0/info",
+            INTERNAL_AW_HOST, INTERNAL_AW_PORT
+        ))
+        .send()
+        .await
+        .map_err(|e| {
+            format!(
+                "内置 ActivityWatch 未运行（{}:{}）: {}",
+                INTERNAL_AW_HOST, INTERNAL_AW_PORT, e
+            )
+        })?
+        .error_for_status()
+        .map_err(|e| {
+            format!(
+                "内置 ActivityWatch 身份检查失败（{}:{}）: {e}",
+                INTERNAL_AW_HOST, INTERNAL_AW_PORT
+            )
+        })?
+        .json()
+        .await
+        .map_err(|e| format!("解析内置 ActivityWatch 身份响应失败: {e}"))?;
+
+    validate_internal_server_identity(&info)
+}
+
+fn validate_internal_server_identity(info: &serde_json::Value) -> Result<(), String> {
+    let device_id = info
+        .get("device_id")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "内置 ActivityWatch 身份检查失败：info 响应缺少 device_id".to_string())?;
+
+    if device_id != INTERNAL_DEVICE_ID {
+        return Err(format!(
+            "内置 ActivityWatch 身份校验失败：端口 {} 被其他 ActivityWatch 实例占用（device_id: {}）",
+            INTERNAL_AW_PORT, device_id
+        ));
+    }
+
+    Ok(())
+}
+
 fn urlencode(s: &str) -> String {
     // bucket id 形如 aw-watcher-window_我的电脑，包含中文，需要 URL 编码
     let mut out = String::new();
@@ -233,8 +291,10 @@ pub struct AwWindowEventInput {
 
 /// 启动随墨记分发的 ActivityWatch server。采集器仍由墨记管理，不需要外部 watcher。
 pub fn start_internal_server(app: &AppHandle) -> Result<InternalAwServer, String> {
-    if server_is_healthy() {
-        return Ok(InternalAwServer(Mutex::new(None)));
+    match server_is_healthy() {
+        Ok(true) => return Ok(InternalAwServer(Mutex::new(None))),
+        Ok(false) => {}
+        Err(error) => return Err(error),
     }
 
     let binary = internal_server_binary(app)?;
@@ -254,10 +314,15 @@ pub fn start_internal_server(app: &AppHandle) -> Result<InternalAwServer, String
         .arg("--dbpath")
         .arg(&data_dir)
         .arg("--device-id")
-        .arg("moji")
+        .arg(INTERNAL_DEVICE_ID)
         .arg("--no-legacy-import")
         .spawn()
-        .map_err(|e| format!("启动内置 ActivityWatch 服务失败（{}）: {e}", binary.display()))?;
+        .map_err(|e| {
+            format!(
+                "启动内置 ActivityWatch 服务失败（{}:{}，端口可能已被占用）: {e}",
+                INTERNAL_AW_HOST, INTERNAL_AW_PORT
+            )
+        })?;
 
     Ok(InternalAwServer(Mutex::new(Some(child))))
 }
@@ -291,13 +356,59 @@ fn internal_server_binary(app: &AppHandle) -> Result<PathBuf, String> {
         .ok_or_else(|| "内置 ActivityWatch 服务文件缺失，无法启动采集服务".to_string())
 }
 
-fn server_is_healthy() -> bool {
+fn server_is_healthy() -> Result<bool, String> {
     let address = format!("{INTERNAL_AW_HOST}:{INTERNAL_AW_PORT}");
-    address
+    let socket = address
         .parse()
-        .ok()
-        .and_then(|socket| std::net::TcpStream::connect_timeout(&socket, Duration::from_millis(300)).ok())
-        .is_some()
+        .map_err(|e| format!("解析内置 ActivityWatch 地址失败: {e}"))?;
+
+    let mut stream = match std::net::TcpStream::connect_timeout(&socket, Duration::from_millis(300))
+    {
+        Ok(stream) => stream,
+        Err(_) => return Ok(false),
+    };
+
+    stream
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .map_err(|e| format!("设置 ActivityWatch 健康检查超时失败: {e}"))?;
+    stream
+        .set_write_timeout(Some(Duration::from_millis(500)))
+        .map_err(|e| format!("设置 ActivityWatch 健康检查超时失败: {e}"))?;
+
+    let request = format!(
+        "GET /api/0/info HTTP/1.1\r\nHost: {INTERNAL_AW_HOST}:{INTERNAL_AW_PORT}\r\nConnection: close\r\nAccept: application/json\r\n\r\n"
+    );
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|e| format!("内置 ActivityWatch 身份检查请求失败: {e}"))?;
+
+    let mut response = Vec::new();
+    stream
+        .read_to_end(&mut response)
+        .map_err(|e| format!("读取内置 ActivityWatch 身份响应失败: {e}"))?;
+
+    let response = String::from_utf8(response)
+        .map_err(|_| "内置 ActivityWatch 身份响应不是有效的 HTTP 文本".to_string())?;
+    let (headers, body) = response
+        .split_once("\r\n\r\n")
+        .ok_or_else(|| "端口已被占用，但响应不是有效的 HTTP 响应".to_string())?;
+
+    let status_line = headers
+        .lines()
+        .next()
+        .ok_or_else(|| "端口已被占用，但缺少 HTTP 状态行".to_string())?;
+    if !status_line.starts_with("HTTP/") || !status_line.contains(" 200 ") {
+        return Err(format!(
+            "端口 {} 被其他服务占用，ActivityWatch 身份检查返回：{}",
+            INTERNAL_AW_PORT, status_line
+        ));
+    }
+
+    let info: serde_json::Value = serde_json::from_str(body)
+        .map_err(|e| format!("端口已被占用，但响应不是有效的 ActivityWatch info JSON: {e}"))?;
+    validate_internal_server_identity(&info)?;
+
+    Ok(true)
 }
 
 fn format_unix_millis(secs: u64, millis: u32) -> String {
@@ -339,4 +450,3 @@ mod tests {
         assert_eq!(urlencode("aw_测试"), "aw_%E6%B5%8B%E8%AF%95");
     }
 }
-

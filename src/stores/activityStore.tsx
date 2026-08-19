@@ -124,6 +124,8 @@ const LEGACY_DEFAULT_EXCLUDED_KEYWORDS = ['微信', 'WeChat', 'QQ', 'Mail', '邮
 
 const STORAGE_KEY = 'xiaohei-activities'
 const SETTINGS_KEY = 'xiaohei-settings'
+// API Key 单独存储，避免与普通设置混在一起被整体序列化（后续可迁移到 Tauri 安全存储）
+const SETTINGS_KEY_API = 'xiaohei-settings-api-key'
 
 function createActivityId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
@@ -291,7 +293,10 @@ function loadSettings(): Settings {
     return {
       ...DEFAULT_SETTINGS,
       ...saved,
-      apiKey: typeof saved.apiKey === 'string' ? saved.apiKey : '',
+      // API Key 从独立存储读取（不再随主设置对象持久化）
+      apiKey: typeof saved.apiKey === 'string'
+        ? saved.apiKey
+        : (localStorage.getItem(SETTINGS_KEY_API) ?? DEFAULT_SETTINGS.apiKey),
       baseUrl: typeof saved.baseUrl === 'string' && saved.baseUrl.trim()
         ? saved.baseUrl
         : DEFAULT_SETTINGS.baseUrl,
@@ -366,7 +371,14 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+    // 主设置对象剥离 apiKey 后持久化；apiKey 单独存储（避免与其他设置同桶）
+    const { apiKey, ...rest } = settings
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest))
+    if (apiKey) {
+      localStorage.setItem(SETTINGS_KEY_API, apiKey)
+    } else {
+      localStorage.removeItem(SETTINGS_KEY_API)
+    }
   }, [settings])
 
   // SQLite 启动加载 / 迁移

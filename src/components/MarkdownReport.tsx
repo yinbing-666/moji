@@ -114,6 +114,7 @@ export function MarkdownReport({ content }: MarkdownReportProps) {
       current().blocks.push(<hr key={`hr-${index}`} className="border-gray-200" />)
       return
     }
+    flushList()
     paragraph.push(line)
   })
   flushParagraph()

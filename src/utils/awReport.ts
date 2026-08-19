@@ -261,11 +261,16 @@ export function buildLocalEfficiencyReport(
     const key = localDateKey(date)
     const day = activities.filter(activity => localDateKey(activity.timestamp) === key)
     const dayHasDuration = day.some(activity => (activity.durationSeconds ?? 0) > 0)
+    const dayTotalUnits = weightedUnits(day, dayHasDuration)
+    const dayProductiveUnits = weightedUnits(
+      day.filter(activity => activity.category === 'dev' || activity.category === 'doc'),
+      dayHasDuration,
+    )
     return {
       date: key,
       pulse: localScore(day, dayHasDuration),
       active_seconds: day.reduce((sum, activity) => sum + Math.max(activity.durationSeconds ?? 0, 0), 0),
-      productive_percent: 0,
+      productive_percent: dayTotalUnits > 0 ? (dayProductiveUnits / dayTotalUnits) * 100 : 0,
     }
   })
 

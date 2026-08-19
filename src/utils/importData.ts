@@ -18,6 +18,21 @@ interface RawActivity {
 
 const VALID_CATEGORIES = ['dev', 'meeting', 'doc', 'communication', 'other'] as const
 
+const CATEGORY_ALIASES: Record<string, Activity['category']> = {
+  dev: 'dev',
+  meeting: 'meeting',
+  doc: 'doc',
+  communication: 'communication',
+  other: 'other',
+  开发: 'dev',
+  编程: 'dev',
+  会议: 'meeting',
+  文档: 'doc',
+  沟通: 'communication',
+  通讯: 'communication',
+  其他: 'other',
+}
+
 export function normalizeImportItem(raw: RawActivity): Activity {
   const id = typeof raw.id === 'string' && raw.id.trim()
     ? raw.id
@@ -57,18 +72,126 @@ function parseJsonImport(text: string): Activity[] {
   return parsed.map(normalizeImportItem)
 }
 
+/** 将导出 Markdown 中的分类名称转换为内部分类值 */
+function normalizeMarkdownCategory(category: string): string {
+  return CATEGORY_ALIASES[category.trim()] || category.trim()
+}
+
+/** 解析完整 Markdown 导出中的单条活动 */
+function parseMarkdownSection(
+  timestamp: string,
+  rawCategory: string,
+  body: string,
+): Activity {
+  const fields: Partial<Record<'app' | 'title' | 'description', string>> = {}
+  let currentField: 'app' | 'title' | 'description' | undefined
+
+  const fieldLine = /^\s*[-*]\s*(?:\*\*)?(应用|窗口|内容)(?:\*\*)?\s*[：:]\s*(.*)$/
+
+  for (const line of body.split(/\r?\n/)) {
+    const match = line.match(fieldLine)
+
+    if (match) {
+      const [, label, value] = match
+      const field = label === '应用'
+        ? 'app'
+        : label === '窗口'
+          ? 'title'
+          : 'description'
+
+      if (fields[field] !== undefined) {
+        throw new Error(`Markdown 活动记录包含重复字段：${label}`)
+      }
+
+      fields[field] = value.trim()
+      currentField = field
+      continue
+    }
+
+    if (currentField && line.trim()) {
+      fields[currentField] = `${fields[currentField] || ''}\n${line.trim()}`.trim()
+    }
+  }
+
+  if (Number.isNaN(Date.parse(timestamp.trim()))) {
+    throw new Error(`Markdown 活动记录包含无法解析的时间：${timestamp.trim()}`)
+  }
+
+  const category = normalizeMarkdownCategory(rawCategory)
+  if (!category) {
+    throw new Error('Markdown 活动记录缺少分类')
+  }
+
+  if (fields.app === undefined || fields.title === undefined || fields.description === undefined) {
+    throw new Error('Markdown 活动记录缺少应用、窗口或内容字段')
+  }
+
+  return normalizeImportItem({
+    timestamp: timestamp.trim(),
+    category,
+    app: fields.app,
+    title: fields.title,
+    description: fields.description,
+  })
+}
+
 /** 解析墨记导出的 Markdown */
 function parseMarkdownImport(text: string): Activity[] {
   const items: Activity[] = []
 
-  // 格式：`- [timestamp] category | app | description` 或 `- **category** | app | description`
-  const recordLine = /-\s*(?:\[([^\]]*)\]\s*)?\*?\*?(\w+)\*?\*?\s*\|\s*([^|]+?)\s*\|\s*(.+)/g
+  // 完整导出格式：
+  // ## timestamp · category
+  // - 应用：...
+  // - 窗口：...
+  // - 内容：...
+  const sectionPattern = /^##\s+(.+?)\s*·\s*(.+?)\s*$/gm
+  const sectionMatches: Array<{ index: number; length: number; timestamp: string; category: string }> = []
+
+  let sectionMatch: RegExpExecArray | null
+  while ((sectionMatch = sectionPattern.exec(text)) !== null) {
+    sectionMatches.push({
+      index: sectionMatch.index,
+      length: sectionMatch[0].length,
+      timestamp: sectionMatch[1],
+      category: sectionMatch[2],
+    })
+  }
+
+  const levelTwoHeadings = text.match(/^##\s+.+$/gm) || []
+  if (levelTwoHeadings.length > 0) {
+    if (sectionMatches.length === 0 || levelTwoHeadings.length !== sectionMatches.length) {
+      throw new Error('无法解析 Markdown 活动记录标题，期望格式为“## 时间 · 分类”')
+    }
+
+    sectionMatches.forEach((section, index) => {
+      const bodyStart = section.index + section.length
+      const bodyEnd = index + 1 < sectionMatches.length
+        ? sectionMatches[index + 1].index
+        : text.length
+      items.push(parseMarkdownSection(
+        section.timestamp,
+        section.category,
+        text.slice(bodyStart, bodyEnd),
+      ))
+    })
+
+    if (items.length === 0) {
+      throw new Error('Markdown 中未找到可导入的活动记录')
+    }
+
+    return items
+  }
+
+  // 兼容旧格式：
+  // - [timestamp] category | app | description
+  // - **category** | app | description
+  const recordLine = /-\s*(?:\[([^\]]*)\]\s*)?\*?\*?([^|\s]+)\*?\*?\s*\|\s*([^|]+?)\s*\|\s*(.+)/g
 
   let match: RegExpExecArray | null
   while ((match = recordLine.exec(text)) !== null) {
     const [, rawTimestamp, rawCategory, rawApp, rawDesc] = match
     const timestamp = rawTimestamp?.trim() || new Date().toISOString()
-    const category = rawCategory.trim()
+    const category = normalizeMarkdownCategory(rawCategory)
     const app = rawApp.trim()
     const description = rawDesc.trim()
 
@@ -79,6 +202,10 @@ function parseMarkdownImport(text: string): Activity[] {
       title: app,
       description,
     }))
+  }
+
+  if (items.length === 0) {
+    throw new Error('Markdown 中未找到可解析的活动记录')
   }
 
   return items

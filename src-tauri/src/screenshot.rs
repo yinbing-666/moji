@@ -92,14 +92,14 @@ fn primary_screen() -> Result<Screen, String> {
     let mut screens =
         Screen::all().map_err(|error| format!("Failed to enumerate screens: {error}"))?;
 
+    if screens.is_empty() {
+        return Err("No screens available for capture".to_string());
+    }
+
     let primary_index = screens
         .iter()
         .position(|screen| screen.display_info.is_primary)
         .unwrap_or(0);
-
-    if screens.is_empty() {
-        return Err("No screens available for capture".to_string());
-    }
 
     Ok(screens.swap_remove(primary_index))
 }
@@ -177,6 +177,8 @@ fn capture_visible_windows_impl(
     capture_images: bool,
 ) -> Result<Vec<CapturedWindow>, String> {
     let mut candidates = enumerate_windows(&excluded_keywords)?;
+    let all_windows = candidates.clone();
+
     candidates.retain(|candidate| candidate.exclusion.is_none());
     candidates.sort_by(|a, b| {
         b.is_foreground
@@ -185,10 +187,25 @@ fn capture_visible_windows_impl(
             .then(b.area.cmp(&a.area))
     });
 
-    let screens = Screen::all().map_err(|error| format!("Failed to enumerate screens: {error}"))?;
+    let screens = if capture_images {
+        Some(
+            Screen::all()
+                .map_err(|error| format!("Failed to enumerate screens: {error}"))?,
+        )
+    } else {
+        None
+    };
+
     let mut captured = Vec::new();
 
     for candidate in candidates.into_iter().take(MAX_WINDOW_CAPTURES) {
+        // A desktop crop is not guaranteed to contain only the requested HWND.
+        // If any higher-Z excluded window intersects it, do not return an image
+        // under the candidate window's identity.
+        if capture_images && is_obscured_by_excluded_window(&candidate, &all_windows) {
+            continue;
+        }
+
         // capture_images=false 时跳过截图（活动识别基于窗口文本，不需要图像），
         // 仅返回窗口元数据；缩略图/预览功能开启时才真正截屏。
         if !capture_images {
@@ -209,7 +226,11 @@ fn capture_visible_windows_impl(
             continue;
         }
 
-        if let Some(image) = capture_window_from_screens(&candidate.rect, &screens)? {
+        let screens = screens
+            .as_ref()
+            .expect("screens must be available when image capture is enabled");
+
+        if let Some(image) = capture_window_from_screens(&candidate.rect, screens)? {
             captured.push(CapturedWindow {
                 hwnd: format!("{:?}", candidate.hwnd),
                 pid: candidate.pid,
@@ -233,28 +254,12 @@ fn capture_visible_windows_impl(
 #[cfg(not(target_os = "windows"))]
 fn capture_visible_windows_impl(
     _excluded_keywords: Vec<String>,
-    capture_images: bool,
+    _capture_images: bool,
 ) -> Result<Vec<CapturedWindow>, String> {
-    if !capture_images {
-        return Ok(vec![]);
-    }
-    let image = primary_screen()?
-        .capture()
-        .map_err(|error| format!("Failed to capture screenshot: {error}"))?;
-    Ok(vec![CapturedWindow {
-        hwnd: "0".to_string(),
-        pid: 0,
-        title: "Primary screen".to_string(),
-        process_name: "screen".to_string(),
-        process_path: String::new(),
-        is_foreground: true,
-        z_index: 0,
-        x: 0,
-        y: 0,
-        width: image.width(),
-        height: image.height(),
-        image_base64: encode_png(image)?,
-    }])
+    Err(
+        "capture_visible_windows is unsupported on this platform because reliable window enumeration and privacy filtering are unavailable"
+            .to_string(),
+    )
 }
 
 #[cfg(target_os = "windows")]
@@ -314,11 +319,6 @@ fn window_candidate(
             return None;
         }
 
-        let title = window_title(hwnd);
-        if title.trim().is_empty() {
-            return None;
-        }
-
         let mut rect = RECT {
             left: 0,
             top: 0,
@@ -331,12 +331,24 @@ fn window_candidate(
 
         let width = rect.right - rect.left;
         let height = rect.bottom - rect.top;
-        if width < MIN_WINDOW_WIDTH || height < MIN_WINDOW_HEIGHT {
+        if width <= 0 || height <= 0 {
             return None;
         }
 
+        let title = window_title(hwnd);
         let process = process_info(hwnd);
         let exclusion = window_exclusion(&title, &process.name, excluded_keywords);
+
+        // Keep excluded windows even when they have no title or are smaller
+        // than normal capture candidates, so they can still act as privacy
+        // blockers for desktop-based crops.
+        if exclusion.is_none()
+            && (title.trim().is_empty()
+                || width < MIN_WINDOW_WIDTH
+                || height < MIN_WINDOW_HEIGHT)
+        {
+            return None;
+        }
 
         Some(WindowCandidate {
             hwnd,
@@ -351,6 +363,18 @@ fn window_candidate(
             exclusion,
         })
     }
+}
+
+#[cfg(target_os = "windows")]
+fn is_obscured_by_excluded_window(
+    candidate: &WindowCandidate,
+    all_windows: &[WindowCandidate],
+) -> bool {
+    all_windows.iter().any(|window| {
+        window.exclusion.is_some()
+            && window.z_index < candidate.z_index
+            && intersect_rect(&candidate.rect, &window.rect).is_some()
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -568,6 +592,7 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "windows")]
     #[test]
     #[ignore = "prints sanitized window filtering diagnostics"]
     fn prints_window_filtering_diagnostics() {

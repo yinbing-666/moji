@@ -46,17 +46,60 @@ const SKINS: Record<ResolvedTheme, Record<Exclude<BackgroundPreset, 'custom'>, S
   },
 }
 
+function escapeCssString(value: string): string {
+  return value.replace(/[\0-\x1f\x7f"\\]/g, (character) => {
+    if (character === '\\') {
+      return '\\\\'
+    }
+    if (character === '"') {
+      return '\\"'
+    }
+    if (character === '\0') {
+      return '\\FFFD '
+    }
+    return `\\${character.charCodeAt(0).toString(16)} `
+  })
+}
+
+function getSafeBackgroundUrl(value: string): string | undefined {
+  const trimmed = value.trim()
+
+  if (!trimmed) {
+    return undefined
+  }
+
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+    return escapeCssString(trimmed)
+  }
+
+  try {
+    const url = new URL(trimmed)
+
+    if (url.protocol !== 'http:' && url.protocol !== 'https:' && url.protocol !== 'file:') {
+      return undefined
+    }
+
+    return escapeCssString(url.href)
+  } catch {
+    return undefined
+  }
+}
+
 export function getAppearanceSkin(
   theme: ResolvedTheme,
   preset: BackgroundPreset,
   customBackground?: string,
 ): SkinColors {
-  if (preset === 'custom' && customBackground) {
+  const safeBackgroundUrl = preset === 'custom' && customBackground
+    ? getSafeBackgroundUrl(customBackground)
+    : undefined
+
+  if (safeBackgroundUrl) {
     const overlay = theme === 'dark'
       ? 'linear-gradient(rgb(9 13 12 / 0.7), rgb(9 13 12 / 0.7))'
       : 'linear-gradient(rgb(244 248 247 / 0.34), rgb(244 248 247 / 0.34))'
     return {
-      canvas: `${overlay}, url(${customBackground}) center / cover fixed`,
+      canvas: `${overlay}, url("${safeBackgroundUrl}") center / cover fixed`,
       sidebar: theme === 'dark' ? 'rgb(14 20 18 / 0.88)' : 'rgb(239 245 243 / 0.88)',
     }
   }

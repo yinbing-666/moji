@@ -1,9 +1,14 @@
 use rusqlite::{params, Connection, DatabaseName};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
+
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
 
 pub struct Database(pub Mutex<Connection>);
 
@@ -279,6 +284,79 @@ fn backup_path(app_data_dir: &PathBuf) -> PathBuf {
     app_data_dir.join("moji.db.backup")
 }
 
+fn temporary_backup_path(app_data_dir: &PathBuf) -> Result<PathBuf, String> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("Failed to get system time: {e}"))?
+        .as_nanos();
+    let process_id = std::process::id();
+
+    for attempt in 0..100u32 {
+        let path = app_data_dir.join(format!(
+            ".moji.db.backup.{process_id}.{timestamp}.{attempt}.tmp"
+        ));
+
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(file) => {
+                drop(file);
+                fs::remove_file(&path)
+                    .map_err(|e| format!("Failed to prepare temporary backup: {e}"))?;
+                return Ok(path);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(format!("Failed to create temporary backup: {e}")),
+        }
+    }
+
+    Err("Failed to create a unique temporary backup path".to_string())
+}
+
+fn replace_backup(temp: &PathBuf, backup: &PathBuf) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let temp_wide: Vec<u16> = temp.as_os_str().encode_wide().chain(Some(0)).collect();
+        let backup_wide: Vec<u16> = backup.as_os_str().encode_wide().chain(Some(0)).collect();
+
+        const MOVEFILE_REPLACE_EXISTING: u32 = 0x00000001;
+        const MOVEFILE_WRITE_THROUGH: u32 = 0x00000008;
+
+        unsafe extern "system" {
+            fn MoveFileExW(
+                lp_existing_file_name: *const u16,
+                lp_new_file_name: *const u16,
+                dw_flags: u32,
+            ) -> i32;
+        }
+
+        let result = unsafe {
+            MoveFileExW(
+                temp_wide.as_ptr(),
+                backup_wide.as_ptr(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        };
+
+        if result == 0 {
+            return Err(format!(
+                "Failed to atomically replace backup: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+
+        return Ok(());
+    }
+
+    #[cfg(not(windows))]
+    {
+        fs::rename(temp, backup)
+            .map_err(|e| format!("Failed to atomically replace backup: {e}"))
+    }
+}
+
 #[tauri::command]
 pub fn save_backup(
     db: tauri::State<'_, Database>,
@@ -288,25 +366,48 @@ pub fn save_backup(
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {e}"))?;
+    fs::create_dir_all(&app_data_dir)
+        .map_err(|e| format!("Failed to create app data directory: {e}"))?;
+
     let backup = backup_path(&app_data_dir);
+    let temp_backup = temporary_backup_path(&app_data_dir)?;
 
-    // VACUUM INTO 在打开中的连接上生成一份逻辑一致且已压缩的快照，
-    // 不再 fs::copy 使用中的 moji.db（Windows 下易触发 sharing violation），
-    // 产物天然是单文件紧凑库，无需再单独 VACUUM 备份文件
-    let conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
-    // VACUUM INTO 要求目标文件不存在，先清掉旧备份
-    match fs::remove_file(&backup) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(format!("Failed to remove old backup: {e}")),
-    }
-    conn.execute("VACUUM INTO ?1", params![backup.to_string_lossy().to_string()])
+    let result = (|| -> Result<u64, String> {
+        // VACUUM INTO 在打开中的连接上生成一份逻辑一致且已压缩的快照，
+        // 写入同目录下的唯一临时文件，成功后再原子替换正式备份。
+        let conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
+        conn.execute(
+            "VACUUM INTO ?1",
+            params![temp_backup.to_string_lossy().to_string()],
+        )
         .map_err(|e| format!("Failed to save backup: {e}"))?;
+        drop(conn);
 
-    // 返回备份文件字节数，让前端能确认备份真实生成（而不是序列化为 null 被误判失败）
-    fs::metadata(&backup)
-        .map(|m| m.len())
-        .map_err(|e| format!("Failed to stat backup: {e}"))
+        // 校验临时备份可打开且完整，避免损坏文件替换掉原有有效备份。
+        let validation_conn = Connection::open(&temp_backup)
+            .map_err(|e| format!("Failed to open temporary backup: {e}"))?;
+        let integrity: String = validation_conn
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .map_err(|e| format!("Failed to check temporary backup integrity: {e}"))?;
+        if integrity.to_lowercase() != "ok" {
+            return Err(format!(
+                "Temporary backup integrity check failed: {integrity}"
+            ));
+        }
+        drop(validation_conn);
+
+        replace_backup(&temp_backup, &backup)?;
+
+        fs::metadata(&backup)
+            .map(|m| m.len())
+            .map_err(|e| format!("Failed to stat backup: {e}"))
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(&temp_backup);
+    }
+
+    result
 }
 
 #[tauri::command]
