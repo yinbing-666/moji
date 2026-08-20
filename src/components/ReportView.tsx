@@ -73,6 +73,7 @@ export function ReportView({ activities }: ReportViewProps) {
   const [templateName, setTemplateName] = useState('')
   const [templatePrompt, setTemplatePrompt] = useState('')
   const [templateError, setTemplateError] = useState<string | null>(null)
+  const [reportType, setReportType] = useState<'daily' | 'weekly' | 'monthly'>('daily')
   const [activeTab, setActiveTab] = useState<'daily' | 'efficiency'>('daily')
   const reportContentRef = useRef<HTMLElement | null>(null)
   const isLocalMode = settings.dataSource === 'local'
@@ -245,7 +246,7 @@ export function ReportView({ activities }: ReportViewProps) {
   /* P1优化: 报告生成处理 */
   const handleGenerateReport = async () => {
     try {
-      await generateDailyReport(reportDate, effectiveTemplate)
+      await generateDailyReport(reportDate, effectiveTemplate, reportType)
     } catch (err) {
       console.error('报告生成失败:', err)
     }
@@ -271,7 +272,21 @@ export function ReportView({ activities }: ReportViewProps) {
             当前为无 LLM 模式，报告按固定格式在本地生成，不会调用 API。
           </div>
         )}
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+        <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="report-type" className="text-xs font-medium text-gray-500">报告周期</label>
+            <select
+              id="report-type"
+              value={reportType}
+              onChange={(e) => setReportType(e.target.value as 'daily' | 'weekly' | 'monthly')}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+            >
+              <option value="daily">日报</option>
+              <option value="weekly">周报</option>
+              <option value="monthly">月报</option>
+            </select>
+          </div>
+
           <div className="flex flex-col gap-1.5">
             <label htmlFor="report-date" className="text-xs font-medium text-gray-500">选择日期</label>
             <input

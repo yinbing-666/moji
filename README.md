@@ -163,4 +163,4 @@ API Key 只保存在本机设置中，不应写入代码仓库、日志。
 - 还没有开机自启、全局快捷键、通知推送（系统托盘与关窗最小化已实现）。
 - 还没有云同步和多用户协作。
 - PDF 导出尚未实现，当前导出以 Markdown 和 JSON 为主。
-- 周报 / 月报的后端生成逻辑已就绪（`src/utils/ai.ts` 支持 weekly / monthly），界面入口尚未提供。
+- 周报 / 月报的后端生成逻辑与界面入口均已就绪（`src/utils/ai.ts` 与 `src/components/ReportView.tsx` 支持 daily / weekly / monthly 切换生成）。

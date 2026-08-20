@@ -82,7 +82,7 @@ interface ActivityStore {
   /** 从 ActivityWatch 拉取数据并写入活动记录，返回新增条数 */
   syncFromAw: (options?: { host?: string; port?: number }) => Promise<number>
   /* P1优化: 新增报告生成相关方法 */
-  generateDailyReport: (date: string, templateKey?: string) => Promise<void>
+  generateDailyReport: (date: string, templateKey?: string, reportType?: 'daily' | 'weekly' | 'monthly') => Promise<void>
   isGeneratingReport: boolean
   /** 最近生成/查看的报告（界面展示用） */
   lastReport: import('../utils/reportHistory').ReportHistoryItem | null
@@ -653,16 +653,39 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     }
   }, [settings.apiKey, settings.baseUrl, settings.textModel])
 
-  /* P1优化: 生成日报 */
-  const generateDailyReport = useCallback(async (date: string, templateKey = 'standard') => {
+  /* P1优化: 生成报告 */
+  const generateDailyReport = useCallback(async (date: string, templateKey = 'standard', reportType: 'daily' | 'weekly' | 'monthly' = 'daily') => {
     setIsGeneratingReport(true)
     try {
-      // 筛选指定日期的活动
-      const dayActivities = activitiesRef.current.filter(a => localDateKey(a.timestamp) === date)
+      // 根据报告类型筛选活动数据
+      let dayActivities: Activity[] = []
+      if (reportType === 'daily') {
+        dayActivities = activitiesRef.current.filter(a => localDateKey(a.timestamp) === date)
+      } else if (reportType === 'weekly') {
+        const targetDate = new Date(date)
+        const dayOfWeek = targetDate.getDay() || 7
+        const monday = new Date(targetDate)
+        monday.setDate(targetDate.getDate() - dayOfWeek + 1)
+        monday.setHours(0, 0, 0, 0)
+        const sunday = new Date(monday)
+        sunday.setDate(monday.getDate() + 6)
+        sunday.setHours(23, 59, 59, 999)
+        dayActivities = activitiesRef.current.filter(a => {
+          const t = new Date(a.timestamp).getTime()
+          return t >= monday.getTime() && t <= sunday.getTime()
+        })
+      } else if (reportType === 'monthly') {
+        const [yearStr, monthStr] = date.split('-')
+        dayActivities = activitiesRef.current.filter(a => {
+          const d = new Date(a.timestamp)
+          return d.getFullYear() === Number(yearStr) && (d.getMonth() + 1) === Number(monthStr)
+        })
+      }
+
       let reportContent: string
 
       if (settings.dataSource === 'local') {
-        reportContent = generateLocalDailyReport(activitiesRef.current, date, templateKey)
+        reportContent = generateLocalDailyReport(dayActivities.length > 0 ? dayActivities : activitiesRef.current, date, templateKey)
       } else {
         const { generateReport } = await import('../utils/ai')
         const templateDescription = getTemplateDescription(templateKey, loadCustomTemplates())
@@ -673,7 +696,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
             category: a.category,
             app_name: a.app,
           })),
-          'daily',
+          reportType,
           settings.apiKey,
           settings.baseUrl,
           settings.textModel,
@@ -681,9 +704,9 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
         )
       }
 
-      // 保存到历史记录并展示在界面上（下载改为手动触发，不再自动弹下载框）
+      // 保存到历史记录并展示在界面上
       const { addReportHistoryItem } = await import('../utils/reportHistory')
-      const nextHistory = addReportHistoryItem(loadReportHistory(), 'daily', reportContent, templateKey)
+      const nextHistory = addReportHistoryItem(loadReportHistory(), reportType, reportContent, templateKey)
       setReportHistory(nextHistory)
       setLastReport(nextHistory[0] ?? null)
     } finally {
