@@ -30,6 +30,8 @@ app-current.png
 app-final.png
 app-fixed2.png
 screenshots/
+*.png
+*.yml
 
 # Agent / session working directories
 .agent-teams/
@@ -41,4 +43,3 @@ _verify_*.cjs
 # Local notes & screenshots (not for publish)
 DEAI-UI-OPTIMIZATION.md
 IDEA.md
-app-*.png
