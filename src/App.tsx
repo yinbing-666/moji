@@ -14,6 +14,7 @@ import { getAppearanceSkin } from './utils/appearance'
 import { categoryVisual } from './utils/categoryStyles'
 import { localDateKey } from './utils/date'
 import { isDemoActivity } from './utils/demoData'
+import { formatMonthDayWeekday } from './utils/format'
 import { recordDiagnostic } from './utils/diagnostics'
 import { dbStartLocalApi, dbStopLocalApi } from './utils/db'
 
@@ -44,7 +45,7 @@ const NAV_ITEMS: Array<{ page: Page; label: string; iconPath: string }> = [
   {
     page: 'health',
     label: '采集健康',
-    iconPath: 'M3.75 12h3l2.25-6 4.5 12 2.25-6h4.5|M3.75 4.5h16.5v15H3.75z',
+    iconPath: 'M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z',
   },
   {
     page: 'search',
@@ -63,8 +64,8 @@ function PageHeader({ title, desc, children }: { title: string; desc?: string; c
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="text-h1 font-bold text-gray-900">{title}</h1>
-        {desc && <p className="mt-1 text-sm text-gray-500">{desc}</p>}
+        <h1 className="text-h1 font-bold text-ink">{title}</h1>
+        {desc && <p className="mt-1 text-sm text-ink-muted">{desc}</p>}
       </div>
       {children}
     </div>
@@ -97,51 +98,51 @@ function Dashboard({ onGoSettings }: { onGoSettings: () => void }) {
     <div className="mx-auto max-w-5xl px-8 py-8">
       <PageHeader
         title="仪表盘"
-        desc={new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })}
+        desc={formatMonthDayWeekday(new Date())}
       />
 
       <TodayOverview activities={activities} />
 
       {(activities.length === 0 || demoCount > 0) && (
-        <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-gray-200 bg-surface/70 px-4 py-3">
+        <section className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-sunken px-4 py-3">
           <div>
-            <p className="text-sm font-medium text-gray-900">{demoCount > 0 ? `正在展示示例数据 · ${demoCount} 条` : '还没有可展示的工作记录'}</p>
-            <p className="mt-0.5 text-xs text-gray-500">{demoMessage ?? (demoCount > 0 ? '示例记录带有独立标记，不会覆盖真实活动。' : '载入虚构工作周，立即体验时间线、分类和周复盘。')}</p>
+            <p className="text-sm font-medium text-ink">{demoCount > 0 ? `正在展示示例数据 · ${demoCount} 条` : '还没有可展示的工作记录'}</p>
+            <p className="mt-0.5 text-xs text-ink-muted">{demoMessage ?? (demoCount > 0 ? '示例记录带有独立标记，不会覆盖真实活动。' : '载入虚构工作周，立即体验时间线、分类和周复盘。')}</p>
           </div>
           {demoCount > 0 ? (
-            <button type="button" onClick={() => void handleRemoveDemo()} className="rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-red-300 hover:text-red-600">移除示例</button>
+            <button type="button" onClick={() => void handleRemoveDemo()} className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted hover:border-danger-line hover:text-danger-ink">移除示例</button>
           ) : (
-            <button type="button" onClick={() => void handleLoadDemo()} className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800">载入示例周</button>
+            <button type="button" onClick={() => void handleLoadDemo()} className="rounded-md bg-inverse px-3 py-1.5 text-xs font-medium text-on-inverse hover:bg-inverse-hover">载入示例周</button>
           )}
         </section>
       )}
 
-      {/* 最近活动卡片 - 左侧色条强调 */}
-      <section className="rounded-r-xl border-l-4 border-l-brand-500 bg-surface p-4 shadow-card">
+      {/* 最近活动卡片 - 与统计卡同一容器规范 */}
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-gray-500">最近活动</p>
+            <p className="text-xs font-medium text-ink-muted">最近活动</p>
             {todaySummary.latest ? (
-              <div className="mt-2 flex items-start gap-3">
+              <div className="mt-2 flex items-start gap-2">
                 {latestVisual && (
-                  <span className="mt-1 h-8 w-1 shrink-0 rounded-full" style={{ backgroundColor: latestVisual.hex }} />
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: latestVisual.color }} />
                 )}
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-gray-900">{todaySummary.latest.app}</p>
-                  <p className="mt-0.5 truncate text-sm text-gray-600">{todaySummary.latest.description}</p>
+                  <p className="truncate text-sm font-medium text-ink">{todaySummary.latest.app}</p>
+                  <p className="mt-0.5 truncate text-sm text-ink-muted">{todaySummary.latest.description}</p>
                 </div>
               </div>
             ) : (
               <>
-                <p className="mt-2 text-sm font-medium text-gray-900">暂无最近活动</p>
-                <p className="mt-0.5 text-sm text-gray-500">开始采集后，工作痕迹会实时出现在这里。</p>
+                <p className="mt-2 text-sm font-medium text-ink">暂无最近活动</p>
+                <p className="mt-0.5 text-sm text-ink-muted">开始采集后，工作痕迹会实时出现在这里。</p>
               </>
             )}
           </div>
           <button
             type="button"
             onClick={onGoSettings}
-            className="shrink-0 rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+            className="shrink-0 rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink"
           >
             采集设置
           </button>
@@ -289,15 +290,15 @@ function AppShell() {
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--app-bg)' }}>
       {/* 侧边栏：主题表面色与内容区分隔，导航 + 采集控制常驻 */}
       <aside
-        className="flex w-16 shrink-0 flex-col border-r border-gray-200/80 backdrop-blur-md sm:w-60"
+        className="flex w-16 shrink-0 flex-col border-r border-line backdrop-blur-md sm:w-60"
         style={{ background: 'var(--sidebar-bg)' }}
       >
         {/* Logo 区 */}
         <div className="flex items-center justify-center gap-3 px-2 pb-5 pt-6 sm:justify-start sm:px-5">
           <img src={mojiMark} alt="墨记" className="h-9 w-9 shrink-0" />
           <div className="hidden sm:block">
-            <p className="text-sm font-bold text-gray-900">墨记</p>
-            <p className="text-2xs text-gray-400">记录工作痕迹</p>
+            <p className="text-sm font-bold text-ink">墨记</p>
+            <p className="text-2xs text-ink-faint">记录工作痕迹</p>
           </div>
         </div>
 
@@ -312,11 +313,11 @@ function AppShell() {
               aria-label={item.label}
               className={`flex w-full items-center justify-center gap-3 rounded-lg px-2 py-2 text-sm font-medium transition-colors sm:justify-start sm:px-3 ${
                 page === item.page
-                  ? 'bg-surface text-gray-900 shadow-sm ring-1 ring-gray-200/80'
-                  : 'text-gray-500 hover:bg-gray-200/60 hover:text-gray-700'
+                  ? 'bg-surface text-ink shadow-sm ring-1 ring-line'
+                  : 'text-ink-muted hover:bg-line hover:text-ink'
               }`}
             >
-              <svg className={`h-4 w-4 shrink-0 ${page === item.page ? 'text-brand-600' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <svg className={`h-4 w-4 shrink-0 ${page === item.page ? 'text-accent-ink' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 {item.iconPath.split('|').map((d, i) => (
                   <path key={i} strokeLinecap="round" strokeLinejoin="round" d={d} />
                 ))}
@@ -327,13 +328,13 @@ function AppShell() {
         </nav>
 
         {/* 底部：采集状态 + 主控开关 */}
-        <div className="space-y-3 border-t border-gray-200 px-2 pb-5 pt-4 sm:px-4">
+        <div className="space-y-3 border-t border-line px-2 pb-5 pt-4 sm:px-4">
           <div className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-2">
-              <span className={`h-2 w-2 rounded-full ${statusActive ? 'bg-brand-500 animate-pulse-dot' : 'bg-gray-300'}`} />
-              <span className={`hidden sm:inline ${statusActive ? 'text-gray-700' : 'text-gray-400'}`}>{statusLabel}</span>
+              <span className={`h-2 w-2 rounded-full ${statusActive ? 'bg-accent animate-pulse-dot' : 'bg-line-strong'}`} />
+              <span className={`hidden sm:inline ${statusActive ? 'text-ink-muted' : 'text-ink-faint'}`}>{statusLabel}</span>
             </span>
-            <span className="hidden rounded bg-gray-200/80 px-1.5 py-0.5 text-2xs text-gray-500 sm:inline">
+            <span className="hidden rounded bg-line px-1.5 py-0.5 text-2xs text-ink-muted sm:inline">
               {localMode ? '无 LLM' : '有 LLM'}
             </span>
           </div>
@@ -343,10 +344,10 @@ function AppShell() {
             onClick={handleCaptureToggle}
             disabled={!isRunning && !captureConfigured}
             aria-label={isRunning ? '停止采集' : '开始采集'}
-            className={`w-full rounded-lg px-1.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:px-4 ${
+            className={`w-full rounded-lg px-1.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed sm:px-4 ${
               isRunning
-                ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                : 'bg-brand-600 text-white hover:bg-brand-700'
+                ? 'bg-line text-ink-muted hover:bg-line-strong'
+                : 'bg-accent text-on-accent hover:bg-accent-hover'
             }`}
           >
             <span className="sm:hidden">{isRunning ? '停止' : '开始'}</span>
@@ -358,7 +359,7 @@ function AppShell() {
             onClick={() => void captureNow()}
             disabled={!captureConfigured || isCapturing || isAnalyzing}
             aria-label="立即采集一次"
-            className="w-full rounded-lg px-1 py-1.5 text-xs text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 sm:px-4"
+            className="w-full rounded-lg px-1 py-1.5 text-xs text-ink-faint transition-colors hover:text-ink-muted disabled:cursor-not-allowed sm:px-4"
           >
             <span className="sm:hidden">{isCapturing || isAnalyzing ? '处理中' : '采集'}</span>
             <span className="hidden sm:inline">{isCapturing || isAnalyzing ? '处理中…' : '立即采集一次'}</span>
@@ -371,7 +372,7 @@ function AppShell() {
         {/* 错误提示 */}
         {error && (
           <div className="mx-auto max-w-5xl px-8 pt-6">
-            <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div role="alert" className="flex items-start gap-2 rounded-xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">
               <svg className="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
@@ -383,28 +384,28 @@ function AppShell() {
         {/* 配置引导：未配置 AI 时给出两条明确路径 */}
         {page === 'dashboard' && !isConfigured && !localMode && (
           <div className="mx-auto max-w-5xl px-8 pt-6">
-            <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200/80 bg-surface p-4 shadow-card">
+            <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface p-4 shadow-card">
               <div className="flex items-start gap-2.5 min-w-0">
-                <svg className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="mt-0.5 h-4 w-4 shrink-0 text-accent-ink" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">开始记录你的工作痕迹</p>
-                  <p className="mt-0.5 text-xs text-gray-600">配置 AI 识别，或切换到无 LLM 模式，使用本地固定规则记录活动。</p>
+                  <p className="text-sm font-medium text-ink">开始记录你的工作痕迹</p>
+                  <p className="mt-0.5 text-xs text-ink-muted">配置 AI 识别，或切换到无 LLM 模式，使用本地固定规则记录活动。</p>
                 </div>
               </div>
               <div className="flex shrink-0 gap-2">
                 <button
                   type="button"
                   onClick={() => setPage('settings')}
-                  className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700"
+                  className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-on-accent transition-colors hover:bg-accent-hover"
                 >
                   去配置 AI
                 </button>
                 <button
                   type="button"
                   onClick={() => updateSettings({ dataSource: 'local' })}
-                  className="rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-400 hover:text-brand-700"
+                  className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink"
                 >
                   使用无 LLM 模式
                 </button>
@@ -422,13 +423,13 @@ function AppShell() {
 
         {/* 截图预览浮窗 */}
         {latestScreenshot && (
-          <div className="fixed bottom-4 right-4 w-48 overflow-hidden rounded-xl border border-gray-200 bg-surface shadow-elevated">
+          <div className="fixed bottom-4 right-4 w-48 overflow-hidden rounded-xl border border-line bg-surface shadow-elevated">
             <img
               src={`data:image/jpeg;base64,${latestScreenshot}`}
               alt="最近活动预览"
               className="h-auto w-full"
             />
-            <div className="bg-surface px-2 py-1 text-center text-xs text-gray-500">
+            <div className="bg-surface px-2 py-1 text-center text-xs text-ink-muted">
               最近活动预览
             </div>
           </div>
