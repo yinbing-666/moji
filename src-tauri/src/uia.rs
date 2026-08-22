@@ -30,6 +30,16 @@ use windows::Win32::UI::WindowsAndMessaging::{GetWindowTextLengthW, GetWindowTex
 static UIA_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(target_os = "windows")]
+struct ComApartmentGuard;
+
+#[cfg(target_os = "windows")]
+impl Drop for ComApartmentGuard {
+    fn drop(&mut self) {
+        unsafe { windows::Win32::System::Com::CoUninitialize() };
+    }
+}
+
+#[cfg(target_os = "windows")]
 /// 常见浏览器/系统窗口的「界面装饰」控件名，对活动识别是纯噪声，直接跳过。
 /// 只跳过这些标签本身；其子控件（如扩展名、书签、标签页标题）仍会继续遍历采集。
 fn is_chrome_noise(name: &str) -> bool {
@@ -144,10 +154,10 @@ fn collect_window_text(hwnd: HWND, max_chars: usize) -> Result<CollectedText, St
         .lock()
         .map_err(|_| "UI Automation 全局锁失效".to_string())?;
 
-    // 初始化 COM（UIA 需要）。可能在多线程调用下已被初始化，返回 S_FALSE/RPC_E_CHANGED_MODE 均视为可继续。
-    unsafe {
-        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-    }
+    // 初始化 COM（UIA 需要），并在当前线程离开采集函数时配对释放。
+    unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }
+        .map_err(|e| format!("初始化 COM apartment 失败: {e}"))?;
+    let _com_guard = ComApartmentGuard;
 
     let automation: IUIAutomation =
         unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) }
