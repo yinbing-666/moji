@@ -3,7 +3,7 @@
 ## 当前阶段
 
 - **Phase**：v0.2.0 平台与集成能力
-- **状态**：第一、第二、第三阶段的 Windows 本地实现与验收完成；代码尚未提交或发布。
+- **状态**：第一、第二、第三阶段的 Windows 本地实现与验收完成；v0.2.0 已发布。
 
 ## 已完成
 
@@ -54,11 +54,11 @@
 
 ## 待办：发布
 
-- [ ] 本地提交：整理 v0.2.0 改动并提交到 `master`。
-- [ ] Windows 安装包：构建并通过发布校验。
-- [ ] 远端推送：将 `master` 快进推送到 `origin`。
-- [ ] 标签：创建并推送 `v0.2.0`。
-- [ ] GitHub Release：发布 `v0.2.0` 并上传 Windows 安装包。
+- [x] 本地提交：整理 v0.2.0 改动并提交到 `master`（`8c0d516`）。
+- [x] Windows 安装包：已构建并通过发布校验，SHA-256 为 `e6d830726a6fc5ae9f95bb7cdd566ab12001ec394827316ae0e77efdbb982191`。
+- [x] 远端推送：`master` 已快进推送到 `origin`（`8c0d516`）。
+- [x] 标签：`v0.2.0` annotated tag 已创建并推送，指向 `8c0d516`。
+- [x] GitHub Release：已发布 `v0.2.0` 并上传 Windows x64 安装包，见 https://github.com/yinbing-666/moji/releases/tag/v0.2.0 。
 
 第三阶段设计见 `docs/specs/2026-08-22-v0.2.0-platform-and-integration-design.md`。
 
@@ -79,7 +79,7 @@
 - **Rust 测试**：`cargo test --locked` 结果 15 passed，0 failed，6 ignored；覆盖 FTS、本地 API、MCP、加密同步、汇总、PDF 文本处理、数据清理和周计划持久化。
 - **测试数据库**：内存 SQLite 验证清理只删除截止时间之前的活动，边界记录保留，FTS 索引同步更新，无效截止时间不删除数据；周计划可覆盖保存并读取。
 - **CI 配置**：前端任务运行功能测试，Windows 后端任务运行 `cargo test --locked`；当前版本不构建 macOS 或 Linux 安装包。
-- **发布校验**：`scripts/check-release.ps1` 通过，六处版本均为 `0.2.0`；尚未构建 v0.2.0 安装包。
+- **发布校验**：`scripts/check-release.ps1` 通过，六处版本均为 `0.2.0`；NSIS 安装包 `墨记_0.2.0_x64-setup.exe` 构建完成，SHA-256 为 `e6d830726a6fc5ae9f95bb7cdd566ab12001ec394827316ae0e77efdbb982191`。
 - **服务检查**：真实 debug 进程运行中，内置 ActivityWatch `127.0.0.1:5601` 返回 v0.13.2。
 - **界面验收**：新增桌面集成、加密同步、数据源、MCP 和本地 API 设置通过 1440×1000 与 390×844 可见验收；无横向溢出或控件截断。
 - **PDF 验收**：独立 A4 渲染器生成两页 QA 报告；中文、图表、ASCII 列表、英文换行、分页和页脚可读，无 Markdown 标记、重叠或截断。
@@ -87,4 +87,4 @@
 - **真实本地 API**：启动前端口 `5610` 未监听；开启后仅绑定 `127.0.0.1`，健康、活动、汇总端点正常，错误令牌返回 `401`，汇总覆盖 1337 条活动。
 - **真实 MCP**：debug 可执行文件以 `--mcp` 进入 `stdio` 模式，`tools/list` 返回 3 个只读工具。
 - **真实回溯**：桌面 APP 使用 SQLite 返回 6 条本周活动，搜索 `ChatGPT` 返回 26 条匹配记录。
-- **Git 状态**：v0.2.0 改动仍在 `master` 工作区，尚未提交或推送。
+- **Git 状态**：v0.2.0 已完成本地提交、远端推送、标签和 GitHub Release。
