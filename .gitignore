@@ -44,3 +44,6 @@ _verify_*.cjs
 # Local notes & screenshots (not for publish)
 DEAI-UI-OPTIMIZATION.md
 IDEA.md
+
+# 临时验证产物（截图/脚本）
+tmp/

@@ -10,11 +10,11 @@ const LEVEL_LABEL: Record<string, string> = {
 }
 
 const LEVEL_COLOR: Record<string, string> = {
-  focus: '#238f84',
-  other_work: '#637b95',
-  neutral: '#929c98',
-  personal: '#c58b45',
-  distracting: '#b75a5a',
+  focus: 'var(--color-ok)',
+  other_work: 'var(--color-info)',
+  neutral: 'var(--color-ink-muted)',
+  personal: 'var(--color-warn)',
+  distracting: 'var(--color-danger)',
 }
 
 const PRIVACY_LABEL: Record<string, string> = {
@@ -155,7 +155,7 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
           <div className="flex items-center gap-4">
             <div
               className="relative h-28 w-28 shrink-0 rounded-full p-2"
-              style={{ background: `conic-gradient(var(--color-brand-500) ${score}%, var(--color-gray-100) 0)` }}
+              style={{ background: `conic-gradient(var(--color-brand-500) ${score}%, var(--color-line-soft) 0)` }}
               aria-label={`效率评分 ${score.toFixed(0)} 分`}
             >
               <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-surface">
@@ -243,7 +243,7 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
           {trend.length === 0 ? <p className="py-6 text-center text-xs text-ink-faint">暂无趋势数据</p> : (
             <div>
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-40 w-full overflow-visible" role="img" aria-label="生产力趋势图">
-                {[20, 45, 70, 95].map(y => <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="var(--color-gray-100)" strokeWidth="0.7" />)}
+                {[20, 45, 70, 95].map(y => <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="var(--color-line-soft)" strokeWidth="0.7" />)}
                 <polyline points={trendPoints(trend.map(item => item.pulse))} fill="none" stroke="var(--color-brand-500)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
               </svg>
               <div className="mt-1 flex justify-between text-[10px] text-ink-faint">
@@ -286,7 +286,7 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
               {levels.map(level => (
                 <div key={level.level} className="flex items-center justify-between gap-3 text-xs">
                   <span className="flex min-w-0 items-center gap-2 text-ink-muted">
-                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: LEVEL_COLOR[level.level] ?? '#929c98' }} />
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: LEVEL_COLOR[level.level] ?? 'var(--color-ink-muted)' }} />
                     <span className="truncate">{LEVEL_LABEL[level.level] ?? level.level}</span>
                   </span>
                   <span className="shrink-0 tabular-nums text-ink-faint">{fmtPercent(level.percent)}</span>
