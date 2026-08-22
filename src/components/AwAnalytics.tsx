@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { Activity } from '../stores/activityStore'
+import { useActivityStore, type Activity } from '../stores/activityStore'
 import { buildLocalEfficiencyReport, type EfficiencyPeriod } from '../utils/awReport'
 import { AwReportDashboard } from './AwReportDashboard'
 
@@ -15,8 +15,12 @@ interface AwAnalyticsProps {
 
 /** ActivityWatch 由 APP 在后台维护，效率页始终读取同一份墨记活动数据。 */
 export function AwAnalytics({ activities }: AwAnalyticsProps) {
+  const { settings } = useActivityStore()
   const [period, setPeriod] = useState<EfficiencyPeriod>('today')
-  const localReport = useMemo(() => buildLocalEfficiencyReport(activities, period), [activities, period])
+  const localReport = useMemo(
+    () => buildLocalEfficiencyReport(activities, period, new Date(), settings.classificationRules),
+    [activities, period, settings.classificationRules],
+  )
 
   return (
     <section className="space-y-5">

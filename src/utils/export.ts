@@ -12,6 +12,7 @@ const CATEGORY_LABEL: Record<Activity['category'], string> = {
   doc: '文档',
   communication: '沟通',
   other: '其他',
+  unclassified: '未分类',
 }
 
 /** 用本地时区拼接 YYYY-MM-DD，避免 toISOString 的 UTC 偏差导致日期错天（可传入时间取该时刻的本地日期） */
@@ -82,6 +83,8 @@ export function exportActivitiesAsMarkdown(activities: Activity[]) {
       `- 应用：${activity.app || '未知应用'}`,
       `- 窗口：${activity.title || '未知窗口'}`,
       `- 内容：${activity.description || '无描述'}`,
+      ...(activity.browserDomain ? [`- 域名：${activity.browserDomain}`] : []),
+      ...(activity.ideProject ? [`- 项目：${activity.ideProject}`] : []),
       '',
     ].join('\n')),
   ]

@@ -7,12 +7,13 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useScreenshot, type ScreenshotCaptureResult } from './useScreenshot'
 import { useActivityStore, type Activity } from '../stores/activityStore'
-import { analyzeWindowText, classifyLocally } from '../utils/ai'
+import { analyzeWindowText } from '../utils/ai'
+import { classifyWindow } from '../utils/classificationRules'
 import { captureVisibleWindows, type CapturedWindow } from '../utils/screenshot'
 import { dbGetIdleSeconds, dbIsScreenLocked, dbReadWindowText, dbWriteAwWindowEvent } from '../utils/db'
-
-/** 空闲超过该秒数则跳过本轮采集（约 10 分钟） */
-const IDLE_SKIP_SECONDS = 600
+import { recordDiagnostic } from '../utils/diagnostics'
+import { extractActivityContext } from '../utils/contextSignals'
+import { calculateActiveDurationSeconds } from '../utils/activityDuration'
 
 function compressBase64(pngBase64: string, maxWidth = 1280): Promise<string> {
   return new Promise((resolve) => {
@@ -61,6 +62,7 @@ function selectWindowsForAnalysis(windows: CapturedWindow[], maxWindows: number)
 export function useAutoCapture() {
   const { settings, addActivity, setIsAnalyzing } = useActivityStore()
   const analyzingRef = useRef(false)
+  const lastObservationAtRef = useRef(Date.now() - Math.min(60, settings.intervalSeconds) * 1000)
   const hasAiConfig = Boolean(
     settings.apiKey.trim()
     && settings.baseUrl.trim()
@@ -69,18 +71,31 @@ export function useAutoCapture() {
   const localMode = settings.dataSource === 'local'
 
   const captureAllowedWindows = useCallback(async (): Promise<ScreenshotCaptureResult> => {
-    // 锁屏或长时间空闲时跳过，避免浪费 API 与产生无意义记录
+    const observedAt = Date.now()
+    const elapsedSeconds = Math.max(
+      1,
+      Math.min(settings.intervalSeconds, Math.round((observedAt - lastObservationAtRef.current) / 1000)),
+    )
+    lastObservationAtRef.current = observedAt
+    let idleSeconds = 0
+
+    // 锁屏或超过用户阈值时跳过；未超过阈值时精确扣掉本周期内的空闲秒数。
     try {
       const locked = await dbIsScreenLocked()
       if (locked) {
         return { imageBase64: '', windows: [] }
       }
       const idle = await dbGetIdleSeconds()
-      if (idle !== null && idle >= IDLE_SKIP_SECONDS) {
+      idleSeconds = idle ?? 0
+      if (idleSeconds >= settings.idleThresholdMinutes * 60) {
         return { imageBase64: '', windows: [] }
       }
     } catch {
       // 系统检测不可用时继续正常采集
+    }
+    const activeDurationSeconds = calculateActiveDurationSeconds(elapsedSeconds, idleSeconds)
+    if (activeDurationSeconds === 0) {
+      return { imageBase64: '', windows: [] }
     }
 
     // 截图仅在用户开启"保存截图缩略图"时才采集；活动识别本身只依赖窗口文本
@@ -113,14 +128,16 @@ export function useAutoCapture() {
       return {
         imageBase64: preview,
         windows: selectedWindows,
+        activeDurationSeconds,
       }
     }
 
     return {
       imageBase64: '',
       windows: selectedWindows,
+      activeDurationSeconds,
     }
-  }, [settings.excludedKeywords, settings.excludedApps, settings.excludedTitlePatterns, settings.maxWindowsPerCapture, settings.saveScreenshotThumbnails])
+  }, [settings.excludedKeywords, settings.excludedApps, settings.excludedTitlePatterns, settings.idleThresholdMinutes, settings.intervalSeconds, settings.maxWindowsPerCapture, settings.saveScreenshotThumbnails])
 
   const handleCapture = useCallback(async (result: ScreenshotCaptureResult) => {
     if (analyzingRef.current) return
@@ -140,32 +157,46 @@ export function useAutoCapture() {
       if (capturedWindows.length === 0) {
         return
       }
+      const foreground = capturedWindows.find(window => window.is_foreground) ?? capturedWindows[0]
 
       // 各窗口并发采集 UIA 文本 + 分析；单个失败降级为本地分类，不拖垮其他
       const results = await Promise.all(
         capturedWindows.map(async (capturedWindow): Promise<
-          { ok: true; capturedWindow: CapturedWindow; category: Activity['category']; app: string; title: string; description: string; screenshotBase64?: string }
+          { ok: true; capturedWindow: CapturedWindow; category: Activity['category']; app: string; title: string; description: string; screenshotBase64?: string; browserDomain?: string; ideProject?: string }
           | { ok: false; capturedWindow: CapturedWindow; error: string }
         > => {
           try {
+            const windowText = !localMode || settings.captureBrowserDomains
+              ? await dbReadWindowText(capturedWindow.hwnd, 2000)
+              : null
+            const context = extractActivityContext(
+              capturedWindow.process_name,
+              capturedWindow.title,
+              windowText?.text ?? '',
+              {
+                browserDomains: settings.captureBrowserDomains,
+                ideProjects: settings.captureIdeProjects,
+              },
+            )
+
             if (localMode) {
-              const local = classifyLocally(capturedWindow.process_name, capturedWindow.title)
+              const app = capturedWindow.process_name
+              const title = capturedWindow.title
+              const category = classifyWindow(app, title, settings.classificationRules)
               const thumbnail = settings.saveScreenshotThumbnails && capturedWindow.image_base64
                 ? await compressBase64(capturedWindow.image_base64, 320)
                 : undefined
               return {
                 ok: true,
                 capturedWindow,
-                category: local.category,
-                app: local.app || capturedWindow.process_name,
-                title: local.title || capturedWindow.title,
-                description: local.description,
+                category,
+                app,
+                title,
+                description: title || app,
                 screenshotBase64: thumbnail,
+                ...context,
               }
             }
-
-            // 读取窗口内 UIA 文本（本地、只读，替代截图）
-            const windowText = await dbReadWindowText(capturedWindow.hwnd, 2000)
 
             const analysis = await analyzeWindowText(
               windowText?.text ?? '',
@@ -193,9 +224,11 @@ export function useAutoCapture() {
               title: analysis.title || capturedWindow.title,
               description: analysis.description,
               screenshotBase64: thumbnail,
+              ...context,
             }
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err)
+            recordDiagnostic('activity-analysis', err)
             return { ok: false, capturedWindow, error: message }
           }
         }),
@@ -209,35 +242,50 @@ export function useAutoCapture() {
             title: item.title,
             description: item.description,
             screenshotBase64: item.screenshotBase64,
+            durationSeconds: item.capturedWindow.hwnd === foreground.hwnd
+              ? result.activeDurationSeconds
+              : 0,
+            browserDomain: item.browserDomain,
+            ideProject: item.ideProject,
           })
         } else {
           console.error('AI analysis failed:', item.error)
           // 降级：用进程名本地确定性分类，避免"分析失败"噪音，同时保留失败原因便于排查
-          const local = classifyLocally(item.capturedWindow.process_name, item.capturedWindow.title)
+          const app = item.capturedWindow.process_name
+          const title = item.capturedWindow.title
+          const category = classifyWindow(app, title, settings.classificationRules)
           addActivity({
-            category: local.category,
-            app: local.app || item.capturedWindow.process_name,
-            title: item.capturedWindow.title,
-            description: `AI 分析失败（${item.error}）· 本地判断：${local.description}`,
+            category,
+            app,
+            title,
+            description: `AI 分析失败（${item.error}）· 本地记录：${title || app}`,
+            durationSeconds: item.capturedWindow.hwnd === foreground.hwnd
+              ? result.activeDurationSeconds
+              : 0,
+            ...extractActivityContext(app, title, '', {
+              browserDomains: false,
+              ideProjects: settings.captureIdeProjects,
+            }),
           })
         }
       }
 
       // ActivityWatch 的时间线仅应写入前台窗口，避免多窗口预览重复累计时长。
-      const foreground = capturedWindows.find(window => window.is_foreground) ?? capturedWindows[0]
       if (foreground) {
         void dbWriteAwWindowEvent({
           app: foreground.process_name,
           title: foreground.title,
-          duration: settings.intervalSeconds,
-          timestamp: new Date().toISOString(),
+          duration: result.activeDurationSeconds ?? Math.min(60, settings.intervalSeconds),
+          timestamp: new Date(
+            Date.now() - (result.activeDurationSeconds ?? Math.min(60, settings.intervalSeconds)) * 1000,
+          ).toISOString(),
         })
       }
     } finally {
       analyzingRef.current = false
       setIsAnalyzing(false)
     }
-  }, [hasAiConfig, localMode, settings.apiKey, settings.baseUrl, settings.textModel, settings.saveScreenshotThumbnails, settings.intervalSeconds, addActivity, setIsAnalyzing])
+  }, [hasAiConfig, localMode, settings.apiKey, settings.baseUrl, settings.textModel, settings.saveScreenshotThumbnails, settings.intervalSeconds, settings.classificationRules, settings.captureBrowserDomains, settings.captureIdeProjects, addActivity, setIsAnalyzing])
 
   const screenshot = useScreenshot({
     intervalSeconds: settings.intervalSeconds,

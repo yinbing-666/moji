@@ -41,6 +41,11 @@ function fmtPercent(value = 0): string {
   return `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`
 }
 
+function fmtSigned(value: number, digits: number, suffix: string): string {
+  const normalized = Math.abs(value) < 0.05 ? 0 : value
+  return `${normalized > 0 ? '+' : ''}${normalized.toFixed(digits)}${suffix}`
+}
+
 function fmtDate(value?: string): string {
   if (!value) return ''
   const date = new Date(value)
@@ -115,6 +120,7 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
   const hasDuration = summary.has_duration_data !== false
   const score = clamp(summary.pulse ?? result?.pulse ?? 0, 0, 100)
   const trend = (report.trend ?? []).slice(-14)
+  const coverageTrend = trend.filter(item => item.active_seconds > 0).slice(-7)
   const hourly = summary.hourly ?? []
   const maxHour = Math.max(...hourly, 1)
   const levels = (summary.levels ?? []).filter(level => level.seconds > 0)
@@ -122,10 +128,13 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
   const categoryMax = Math.max(...categories.map(category => hasDuration ? category.seconds : (category.count ?? 0)), 1)
   const insights = report.insights ?? []
   const rules = report.rule_health
+  const focus = summary.focus_analysis
   const sourceLabel = '墨记本地采集'
   const periodLabel = report.period?.label ?? result?.period_id ?? '当前周期'
   const statusLabel = summary.score_status === 'calibrated' ? '已校准' : '待校准'
   const pulseChange = report.comparison?.previous_available ? report.comparison.pulse_change : null
+  const activeChange = report.comparison?.previous_available ? report.comparison.active_percent_change : null
+  const productiveChange = report.comparison?.previous_available ? report.comparison.productive_percent_change : null
 
   return (
     <div className="space-y-4">
@@ -183,6 +192,22 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
           ))}
         </div>
       </div>
+
+      {report.comparison?.previous_available && (
+        <section className="grid gap-px overflow-hidden rounded-lg border border-gray-200 bg-gray-200 sm:grid-cols-3">
+          {[
+            ['投入变化', activeChange === null || activeChange === undefined ? '基线不足' : fmtSigned(activeChange, 0, '%'), '较上周同期活跃时长'],
+            ['专注变化', productiveChange === null || productiveChange === undefined ? '基线不足' : fmtSigned(productiveChange, 1, ' 个百分点'), '开发与文档活动占比'],
+            ['效率变化', pulseChange === null || pulseChange === undefined ? '基线不足' : fmtSigned(pulseChange, 1, ' 分'), '同一套本地评分口径'],
+          ].map(([label, value, note]) => (
+            <div key={label} className="bg-surface px-4 py-3">
+              <p className="text-[11px] text-gray-500">{label}</p>
+              <p className="mt-1 text-base font-semibold tabular-nums text-gray-900">{value}</p>
+              <p className="mt-0.5 text-[11px] text-gray-400">{note}</p>
+            </div>
+          ))}
+        </section>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
@@ -272,6 +297,42 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
         </section>
       </div>
 
+      <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h4 className="text-sm font-semibold text-gray-900">专注与打断</h4>
+            <p className="mt-0.5 text-xs text-gray-400">连续开发／文档活动合并为专注段，25 分钟以上计为深度工作。</p>
+          </div>
+          <span className="text-xs text-gray-400">应用切换 {focus?.switch_count ?? 0} 次</span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ['专注总时长', hasDuration ? fmtDuration(focus?.focus_seconds ?? 0) : `${focus?.focus_block_count ?? 0} 段`, `${focus?.focus_block_count ?? 0} 个连续专注段`],
+            ['最长专注', hasDuration ? fmtDuration(focus?.longest_focus_seconds ?? 0) : '时长不足', `${focus?.deep_block_count ?? 0} 个深度工作块`],
+            ['打断', `${focus?.interruption_count ?? 0} 次`, hasDuration ? `共 ${fmtDuration(focus?.interruption_seconds ?? 0)}` : '夹在专注活动之间'],
+            ['短碎片', `${focus?.fragment_count ?? 0} 段`, hasDuration ? `共 ${fmtDuration(focus?.fragment_seconds ?? 0)}` : '少于 5 分钟的活动'],
+          ].map(([label, value, note]) => (
+            <div key={label} className="border-l-2 border-brand-200 bg-gray-50/70 px-3 py-2">
+              <p className="text-xs text-gray-500">{label}</p>
+              <p className="mt-1 text-base font-semibold tabular-nums text-gray-900">{value}</p>
+              <p className="mt-0.5 text-[11px] text-gray-400">{note}</p>
+            </div>
+          ))}
+        </div>
+        {(focus?.top_interruptions?.length ?? 0) > 0 && (
+          <div className="mt-3 border-t border-gray-100 pt-3">
+            <p className="mb-2 text-xs font-medium text-gray-600">主要打断来源</p>
+            <div className="flex flex-wrap gap-2">
+              {focus?.top_interruptions?.map(item => (
+                <span key={item.app} className="rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-800">
+                  {item.app} · {item.count} 次{hasDuration ? ` · ${fmtDuration(item.seconds)}` : ''}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
@@ -318,7 +379,34 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
             <div className="rounded-md bg-gray-50 p-2"><p className="text-lg font-semibold tabular-nums text-gray-900">{rules?.issue_count ?? 0}</p><p className="text-[11px] text-gray-400">问题</p></div>
             <div className="rounded-md bg-gray-50 p-2"><p className="text-lg font-semibold tabular-nums text-gray-900">{fmtPercent(rules?.coverage_percent)}</p><p className="text-[11px] text-gray-400">覆盖率</p></div>
           </div>
-          {(rules?.suggestions?.length ?? 0) > 0 && <p className="mt-3 text-xs leading-5 text-gray-500">检测到 {rules?.suggestions?.length} 个可确认的高耗时应用规则建议。</p>}
+          {(rules?.suggestions?.length ?? 0) > 0 && (
+            <div className="mt-3 border-t border-gray-100 pt-3">
+              <p className="text-xs font-medium text-gray-600">优先处理的未分类项目</p>
+              <div className="mt-2 space-y-1.5">
+                {rules?.suggestions?.slice(0, 3).map((suggestion, index) => (
+                  <p key={`${suggestion.source}-${suggestion.value}-${index}`} className="truncate text-xs text-gray-500" title={suggestion.value}>
+                    {suggestion.source}{suggestion.expected_seconds ? ` · ${fmtDuration(suggestion.expected_seconds)}` : ''}：{suggestion.value}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+          {coverageTrend.length > 0 && (
+            <div className="mt-3 border-t border-gray-100 pt-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-medium text-gray-600">最近 7 个活跃日覆盖率</p>
+                <span className="text-[11px] text-gray-400">越高表示待整理活动越少</span>
+              </div>
+              <div className="flex h-16 items-end gap-2">
+                {coverageTrend.map(item => (
+                  <div key={item.date} className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-1" title={`${item.date} · ${fmtPercent(item.coverage_percent)}`}>
+                    <div className="w-full rounded-t-sm bg-brand-300 group-hover:bg-brand-400" style={{ height: `${Math.max(4, item.coverage_percent ?? 0)}%` }} />
+                    <span className="text-[9px] text-gray-400">{item.date.slice(5)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
         <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
           <h4 className="mb-3 text-sm font-semibold text-gray-900">数据与隐私</h4>

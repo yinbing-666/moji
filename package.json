@@ -1,11 +1,12 @@
 {
   "name": "xiaohei-daily",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test:features": "node --test tests/feature-analysis.test.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri"

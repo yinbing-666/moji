@@ -14,9 +14,12 @@ interface RawActivity {
   title?: unknown
   description?: unknown
   screenshotBase64?: unknown
+  durationSeconds?: unknown
+  browserDomain?: unknown
+  ideProject?: unknown
 }
 
-const VALID_CATEGORIES = ['dev', 'meeting', 'doc', 'communication', 'other'] as const
+const VALID_CATEGORIES = ['dev', 'meeting', 'doc', 'communication', 'other', 'unclassified'] as const
 
 const CATEGORY_ALIASES: Record<string, Activity['category']> = {
   dev: 'dev',
@@ -24,6 +27,8 @@ const CATEGORY_ALIASES: Record<string, Activity['category']> = {
   doc: 'doc',
   communication: 'communication',
   other: 'other',
+  unclassified: 'unclassified',
+  未分类: 'unclassified',
   开发: 'dev',
   编程: 'dev',
   会议: 'meeting',
@@ -51,6 +56,15 @@ export function normalizeImportItem(raw: RawActivity): Activity {
   const screenshotBase64 = typeof raw.screenshotBase64 === 'string' && raw.screenshotBase64.trim()
     ? raw.screenshotBase64
     : undefined
+  const durationSeconds = typeof raw.durationSeconds === 'number' && Number.isFinite(raw.durationSeconds) && raw.durationSeconds >= 0
+    ? Math.round(raw.durationSeconds)
+    : undefined
+  const browserDomain = typeof raw.browserDomain === 'string' && raw.browserDomain.trim()
+    ? raw.browserDomain.trim().slice(0, 120)
+    : undefined
+  const ideProject = typeof raw.ideProject === 'string' && raw.ideProject.trim()
+    ? raw.ideProject.trim().slice(0, 80)
+    : undefined
 
   return {
     id,
@@ -60,6 +74,9 @@ export function normalizeImportItem(raw: RawActivity): Activity {
     title,
     description,
     ...(screenshotBase64 ? { screenshotBase64 } : {}),
+    ...(durationSeconds !== undefined ? { durationSeconds } : {}),
+    ...(browserDomain ? { browserDomain } : {}),
+    ...(ideProject ? { ideProject } : {}),
   }
 }
 
@@ -83,10 +100,10 @@ function parseMarkdownSection(
   rawCategory: string,
   body: string,
 ): Activity {
-  const fields: Partial<Record<'app' | 'title' | 'description', string>> = {}
-  let currentField: 'app' | 'title' | 'description' | undefined
+  const fields: Partial<Record<'app' | 'title' | 'description' | 'browserDomain' | 'ideProject', string>> = {}
+  let currentField: 'app' | 'title' | 'description' | 'browserDomain' | 'ideProject' | undefined
 
-  const fieldLine = /^\s*[-*]\s*(?:\*\*)?(应用|窗口|内容)(?:\*\*)?\s*[：:]\s*(.*)$/
+  const fieldLine = /^\s*[-*]\s*(?:\*\*)?(应用|窗口|内容|域名|项目)(?:\*\*)?\s*[：:]\s*(.*)$/
 
   for (const line of body.split(/\r?\n/)) {
     const match = line.match(fieldLine)
@@ -97,7 +114,11 @@ function parseMarkdownSection(
         ? 'app'
         : label === '窗口'
           ? 'title'
-          : 'description'
+          : label === '域名'
+            ? 'browserDomain'
+            : label === '项目'
+              ? 'ideProject'
+              : 'description'
 
       if (fields[field] !== undefined) {
         throw new Error(`Markdown 活动记录包含重复字段：${label}`)
@@ -132,6 +153,8 @@ function parseMarkdownSection(
     app: fields.app,
     title: fields.title,
     description: fields.description,
+    browserDomain: fields.browserDomain,
+    ideProject: fields.ideProject,
   })
 }
 

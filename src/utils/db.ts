@@ -5,7 +5,7 @@
  * [P1优化] 错误处理、降级策略、类型定义不变
  */
 
-interface DbActivity {
+export interface DbActivity {
   id: string
   timestamp: string
   category: string
@@ -14,6 +14,8 @@ interface DbActivity {
   description: string
   screenshot_base64: string | null
   duration_seconds?: number | null
+  browser_domain?: string | null
+  ide_project?: string | null
 }
 
 export interface DbReportHistory {
@@ -41,6 +43,7 @@ let invoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) 
 
 async function getInvoke() {
   if (invoke) return invoke
+  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return null
   try {
     const mod = await import('@tauri-apps/api/core')
     invoke = mod.invoke
@@ -76,6 +79,8 @@ export async function dbSaveActivity(activity: {
   description: string
   screenshotBase64?: string
   durationSeconds?: number
+  browserDomain?: string
+  ideProject?: string
 }): Promise<boolean> {
   const result = await call('db_save_activity', {
     id: activity.id,
@@ -86,6 +91,8 @@ export async function dbSaveActivity(activity: {
     description: activity.description,
     screenshotBase64: activity.screenshotBase64 || null,
     durationSeconds: activity.durationSeconds ?? null,
+    browserDomain: activity.browserDomain ?? null,
+    ideProject: activity.ideProject ?? null,
   })
   return result !== null
 }
@@ -127,6 +134,159 @@ async function callStrict<T>(cmd: string, args?: Record<string, unknown>): Promi
 
 export async function dbReplaceActivities(data: string): Promise<number | null> {
   return callStrict<number>('db_replace_activities', { data })
+}
+
+export async function dbSearchActivities(options: {
+  query: string
+  startAt?: string
+  endAt?: string
+  limit?: number
+}): Promise<DbActivity[] | null> {
+  return call<DbActivity[]>('db_search_activities', {
+    query: options.query,
+    startAt: options.startAt ?? null,
+    endAt: options.endAt ?? null,
+    limit: options.limit ?? 200,
+  })
+}
+
+export interface DbStorageStats {
+  database_bytes: number
+  activity_count: number
+  screenshot_count: number
+  screenshot_bytes: number
+  expired_count: number
+  oldest_timestamp?: string | null
+}
+
+export async function dbGetStorageStats(cutoff?: string): Promise<DbStorageStats | null> {
+  return call<DbStorageStats>('db_get_storage_stats', { cutoff: cutoff ?? null })
+}
+
+export async function dbCleanupActivities(cutoff: string): Promise<number | null> {
+  return callStrict<number>('db_cleanup_activities', { cutoff })
+}
+
+export interface DbWeeklyPlan {
+  week_start: string
+  targets_json: string
+  updated_at: string
+}
+
+export async function dbSaveWeeklyPlan(input: {
+  weekStart: string
+  targetsJson: string
+  updatedAt: string
+}): Promise<boolean> {
+  return (await callStrict('db_save_weekly_plan', input)) !== null
+}
+
+export async function dbLoadWeeklyPlan(weekStart: string): Promise<DbWeeklyPlan | null> {
+  return call<DbWeeklyPlan>('db_load_weekly_plan', { weekStart })
+}
+
+export interface LocalApiStatus {
+  running: boolean
+  port?: number | null
+}
+
+export async function dbStartLocalApi(port: number, token: string): Promise<LocalApiStatus | null> {
+  return callStrict<LocalApiStatus>('start_local_api', { port, token })
+}
+
+export async function dbStopLocalApi(): Promise<boolean> {
+  return (await callStrict('stop_local_api')) !== null
+}
+
+export async function dbLocalApiStatus(): Promise<LocalApiStatus | null> {
+  return call<LocalApiStatus>('local_api_status')
+}
+
+export interface ActivitySourceDescriptor {
+  id: 'window' | 'activitywatch' | 'json_file'
+  label: string
+  available: boolean
+  detail: string
+  privacy: string
+}
+
+export interface SyncResult {
+  importedActivities: number
+  importedReports: number
+  updatedWeeklyPlans: number
+  conflicts: number
+  snapshotCount: number
+  snapshotPath: string
+}
+
+export interface DesktopIntegrationStatus {
+  autostartEnabled: boolean
+  shortcutEnabled: boolean
+  shortcut: string
+  notificationPermission: string
+}
+
+export interface McpServerInfo {
+  executable: string
+  args: string[]
+  databasePath: string
+  tools: string[]
+}
+
+export interface PdfReportRequest {
+  title: string
+  reportType: string
+  createdAt: string
+  mode: string
+  template: string
+  content: string
+  activityCount: number
+  categories: Array<{ label: string; value: number }>
+  topApps: Array<{ label: string; value: number }>
+}
+
+export async function dbListActivitySources(): Promise<ActivitySourceDescriptor[] | null> {
+  return call<ActivitySourceDescriptor[]>('list_activity_sources')
+}
+
+export async function dbPickSyncFolder(): Promise<string | null> {
+  return callStrict<string | null>('pick_sync_folder')
+}
+
+export async function dbSyncWithFolder(input: {
+  folder: string
+  password: string
+  deviceId: string
+}): Promise<SyncResult | null> {
+  return callStrict<SyncResult>('sync_with_folder', input)
+}
+
+export async function dbDesktopIntegrationStatus(): Promise<DesktopIntegrationStatus | null> {
+  return call<DesktopIntegrationStatus>('desktop_integration_status')
+}
+
+export async function dbSetAutostart(enabled: boolean): Promise<boolean | null> {
+  return callStrict<boolean>('set_autostart', { enabled })
+}
+
+export async function dbSetGlobalShortcut(enabled: boolean): Promise<boolean | null> {
+  return callStrict<boolean>('set_global_shortcut', { enabled })
+}
+
+export async function dbRequestNotificationPermission(): Promise<string | null> {
+  return callStrict<string>('request_notification_permission')
+}
+
+export async function dbSendSystemNotification(title: string, body: string): Promise<boolean> {
+  return (await callStrict('send_system_notification', { title, body })) !== null
+}
+
+export async function dbMcpServerInfo(): Promise<McpServerInfo | null> {
+  return call<McpServerInfo>('mcp_server_info')
+}
+
+export async function dbExportReportPdf(request: PdfReportRequest): Promise<string | null> {
+  return callStrict<string | null>('export_report_pdf', { request })
 }
 
 // ── Report History ──

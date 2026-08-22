@@ -10,6 +10,7 @@ const CATEGORY_LABEL: Record<Activity['category'], string> = {
   doc: '文档',
   communication: '沟通',
   other: '其他',
+  unclassified: '未分类',
 }
 
 const VALID_TEMPLATES: LocalReportTemplate[] = ['standard', 'brief', 'technical', 'okr']
@@ -36,7 +37,12 @@ function activityLine(activity: Activity): string {
   })
   const duration = formatDuration(activity.durationSeconds)
   const suffix = duration ? `（${duration}）` : ''
-  return `- ${time} · ${CATEGORY_LABEL[activity.category]} · ${activityText(activity)}${suffix}`
+  const context = [
+    activity.browserDomain ? `域名 ${activity.browserDomain}` : '',
+    activity.ideProject ? `项目 ${activity.ideProject}` : '',
+  ].filter(Boolean)
+  const contextText = context.length > 0 ? ` · ${context.join(' · ')}` : ''
+  return `- ${time} · ${CATEGORY_LABEL[activity.category]} · ${activityText(activity)}${suffix}${contextText}`
 }
 
 function rankedApps(activities: Activity[]): Array<[string, number, number]> {

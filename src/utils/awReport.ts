@@ -1,5 +1,6 @@
 import type { Activity } from '../stores/activityStore'
 import { categoryVisual } from './categoryStyles'
+import { findClassificationRuleConflicts, type ClassificationRule } from './classificationRules'
 import { localDateKey } from './date'
 
 export type EfficiencyPeriod = 'today' | 'this-week' | 'last-week'
@@ -34,6 +35,7 @@ export interface AwReportTrendPoint {
   productive_seconds?: number
   ai_seconds?: number
   deep_work?: { seconds?: number }
+  coverage_percent?: number
 }
 
 export interface AwReportInsight {
@@ -101,6 +103,18 @@ export interface AwReportData {
       block_count?: number
       start_hours?: number[]
     }
+    focus_analysis?: {
+      focus_seconds?: number
+      longest_focus_seconds?: number
+      focus_block_count?: number
+      deep_block_count?: number
+      interruption_count?: number
+      interruption_seconds?: number
+      fragment_count?: number
+      fragment_seconds?: number
+      switch_count?: number
+      top_interruptions?: Array<{ app: string; count: number; seconds: number }>
+    }
   }
   comparison?: {
     previous_available?: boolean
@@ -124,6 +138,7 @@ const CATEGORY_POINTS: Record<Activity['category'], number> = {
   meeting: 65,
   communication: 60,
   other: 50,
+  unclassified: 50,
 }
 
 const CATEGORY_LEVEL: Record<Activity['category'], AwReportLevel['level']> = {
@@ -132,6 +147,7 @@ const CATEGORY_LEVEL: Record<Activity['category'], AwReportLevel['level']> = {
   meeting: 'neutral',
   communication: 'neutral',
   other: 'neutral',
+  unclassified: 'neutral',
 }
 
 const LEVEL_POINTS: Record<string, number> = {
@@ -184,16 +200,152 @@ function isAiActivity(activity: Activity): boolean {
   )
 }
 
+function previousPeriodBounds(start: Date, end: Date): { start: Date; end: Date } {
+  const previousStart = new Date(start)
+  const previousEnd = new Date(end)
+  previousStart.setDate(previousStart.getDate() - 7)
+  previousEnd.setDate(previousEnd.getDate() - 7)
+  return { start: previousStart, end: previousEnd }
+}
+
+function percentChange(current: number, previous: number): number | null {
+  if (previous <= 0) return null
+  return ((current - previous) / previous) * 100
+}
+
+const FOCUS_CATEGORIES = new Set<Activity['category']>(['dev', 'doc'])
+const DEEP_WORK_SECONDS = 25 * 60
+const MAX_FOCUS_GAP_SECONDS = 5 * 60
+const MAX_INTERRUPTION_SECONDS = 15 * 60
+const FRAGMENT_SECONDS = 5 * 60
+
+interface ActivitySegment {
+  activity: Activity
+  start: number
+  end: number
+  seconds: number
+  focus: boolean
+}
+
+export function analyzeFocusPatterns(activities: Activity[]) {
+  const segments: ActivitySegment[] = activities
+    .map(activity => {
+      const start = Date.parse(activity.timestamp)
+      const seconds = Math.max(activity.durationSeconds ?? 60, 1)
+      return {
+        activity,
+        start,
+        end: start + seconds * 1000,
+        seconds,
+        focus: FOCUS_CATEGORIES.has(activity.category),
+      }
+    })
+    .filter(segment => Number.isFinite(segment.start))
+    .sort((a, b) => a.start - b.start)
+
+  const focusBlocks: Array<{ start: number; end: number; seconds: number }> = []
+  let current: { start: number; end: number; seconds: number } | null = null
+  let switchCount = 0
+  let fragmentCount = 0
+  let fragmentSeconds = 0
+  const interruptions = new Map<string, { count: number; seconds: number }>()
+  let interruptionCount = 0
+  let interruptionSeconds = 0
+
+  for (let index = 0; index < segments.length; index++) {
+    const segment = segments[index]
+    const previous = segments[index - 1]
+    const next = segments[index + 1]
+
+    if (segment.seconds < FRAGMENT_SECONDS) {
+      fragmentCount++
+      fragmentSeconds += segment.seconds
+    }
+    if (previous
+      && segment.start >= previous.end
+      && previous.activity.app !== segment.activity.app
+      && segment.start - previous.end <= MAX_FOCUS_GAP_SECONDS * 1000) {
+      switchCount++
+    }
+
+    if (segment.focus) {
+      if (current && segment.start - current.end <= MAX_FOCUS_GAP_SECONDS * 1000) {
+        const overlapSeconds = Math.max((current.end - segment.start) / 1000, 0)
+        current.end = Math.max(current.end, segment.end)
+        current.seconds += Math.max(segment.seconds - overlapSeconds, 0)
+      } else {
+        if (current) focusBlocks.push(current)
+        current = { start: segment.start, end: segment.end, seconds: segment.seconds }
+      }
+      continue
+    }
+
+    if (current) {
+      focusBlocks.push(current)
+      current = null
+    }
+
+    const interruptsFocus = previous?.focus
+      && next?.focus
+      && segment.seconds <= MAX_INTERRUPTION_SECONDS
+      && segment.start >= previous.end
+      && next.start >= segment.end
+      && segment.start - previous.end <= MAX_FOCUS_GAP_SECONDS * 1000
+      && next.start - segment.end <= MAX_FOCUS_GAP_SECONDS * 1000
+    if (interruptsFocus) {
+      interruptionCount++
+      interruptionSeconds += segment.seconds
+      const currentApp = interruptions.get(segment.activity.app) ?? { count: 0, seconds: 0 }
+      currentApp.count++
+      currentApp.seconds += segment.seconds
+      interruptions.set(segment.activity.app, currentApp)
+    }
+  }
+  if (current) focusBlocks.push(current)
+
+  const deepBlocks = focusBlocks.filter(block => block.seconds >= DEEP_WORK_SECONDS)
+  return {
+    focusSeconds: focusBlocks.reduce((sum, block) => sum + block.seconds, 0),
+    longestFocusSeconds: focusBlocks.reduce((max, block) => Math.max(max, block.seconds), 0),
+    focusBlockCount: focusBlocks.length,
+    deepBlockCount: deepBlocks.length,
+    deepSeconds: deepBlocks.reduce((sum, block) => sum + block.seconds, 0),
+    deepStartHours: deepBlocks.map(block => new Date(block.start).getHours()),
+    interruptionCount,
+    interruptionSeconds,
+    fragmentCount,
+    fragmentSeconds,
+    switchCount,
+    topInterruptions: Array.from(interruptions.entries())
+      .map(([app, value]) => ({ app, ...value }))
+      .sort((a, b) => b.seconds - a.seconds || b.count - a.count)
+      .slice(0, 5),
+  }
+}
+
+function ruleIssues(rules: ClassificationRule[]): number {
+  const emptyRules = rules.filter(rule => rule.enabled && rule.appKeywords.length + rule.titleKeywords.length === 0).length
+  return emptyRules + findClassificationRuleConflicts(rules).length
+}
+
 /** Build a deterministic efficiency overview from Moji's own activity records. */
 export function buildLocalEfficiencyReport(
   activities: Activity[],
   period: EfficiencyPeriod,
   now = new Date(),
+  classificationRules: ClassificationRule[] = [],
 ): AwReportData {
   const { start, end } = periodBounds(period, now)
   const selected = activities.filter(activity => {
     const timestamp = Date.parse(activity.timestamp)
     return Number.isFinite(timestamp) && timestamp >= start.getTime() && timestamp < end.getTime()
+  })
+  const previousBounds = previousPeriodBounds(start, end)
+  const previousSelected = activities.filter(activity => {
+    const timestamp = Date.parse(activity.timestamp)
+    return Number.isFinite(timestamp)
+      && timestamp >= previousBounds.start.getTime()
+      && timestamp < previousBounds.end.getTime()
   })
   const hasDuration = selected.some(activity => (activity.durationSeconds ?? 0) > 0)
   const totalUnits = Math.max(weightedUnits(selected, hasDuration), 1)
@@ -205,8 +357,16 @@ export function buildLocalEfficiencyReport(
   const hourly = Array.from({ length: 24 }, () => 0)
   let aiSeconds = 0
   let aiCount = 0
-  let focusSeconds = 0
-  let focusCount = 0
+  const focus = analyzeFocusPatterns(selected)
+  const previousHasDuration = previousSelected.some(activity => (activity.durationSeconds ?? 0) > 0)
+  const previousTotalUnits = weightedUnits(previousSelected, previousHasDuration)
+  const previousProductiveUnits = weightedUnits(
+    previousSelected.filter(activity => activity.category === 'dev' || activity.category === 'doc'),
+    previousHasDuration,
+  )
+  const previousTotalSeconds = previousSelected.reduce((sum, activity) => sum + Math.max(activity.durationSeconds ?? 0, 0), 0)
+  const previousProductivePercent = previousTotalUnits > 0 ? (previousProductiveUnits / previousTotalUnits) * 100 : 0
+  const previousAvailable = previousSelected.length > 0
 
   for (const activity of selected) {
     const seconds = Math.max(activity.durationSeconds ?? 0, 0)
@@ -223,10 +383,6 @@ export function buildLocalEfficiencyReport(
     if (isAiActivity(activity)) {
       aiSeconds += seconds
       aiCount += 1
-    }
-    if (activity.category === 'dev') {
-      focusSeconds += seconds
-      focusCount += 1
     }
   }
 
@@ -253,6 +409,30 @@ export function buildLocalEfficiencyReport(
     points: LEVEL_POINTS[level] ?? 50,
   }))
   const productiveUnits = (categoryUnits.get('dev') ?? 0) + (categoryUnits.get('doc') ?? 0)
+  const productivePercent = selected.length > 0 ? (productiveUnits / totalUnits) * 100 : 0
+  const productivePercentChange = Math.abs(productivePercent - previousProductivePercent) < 0.05
+    ? 0
+    : productivePercent - previousProductivePercent
+  const unclassifiedUnits = categoryUnits.get('unclassified') ?? 0
+  const classifiedUnits = Math.max(totalUnits - unclassifiedUnits, 0)
+
+  const unclassifiedGroups = new Map<string, { app: string; title: string; units: number }>()
+  for (const activity of selected.filter(item => item.category === 'unclassified')) {
+    const key = `${activity.app}\u0000${activity.title}`
+    const units = hasDuration ? Math.max(activity.durationSeconds ?? 0, 0) : 1
+    const current = unclassifiedGroups.get(key)
+    if (current) current.units += units
+    else unclassifiedGroups.set(key, { app: activity.app, title: activity.title, units })
+  }
+  const ruleSuggestions = Array.from(unclassifiedGroups.values())
+    .sort((a, b) => b.units - a.units)
+    .slice(0, 5)
+    .map(item => ({
+      source: item.app,
+      value: item.title || item.app,
+      expected_seconds: hasDuration ? item.units : undefined,
+      confidence: 'needs_confirmation',
+    }))
 
   const trendEnd = startOfDay(end)
   const trend = Array.from({ length: 14 }, (_, index) => {
@@ -266,11 +446,16 @@ export function buildLocalEfficiencyReport(
       day.filter(activity => activity.category === 'dev' || activity.category === 'doc'),
       dayHasDuration,
     )
+    const dayClassifiedUnits = weightedUnits(
+      day.filter(activity => activity.category !== 'unclassified'),
+      dayHasDuration,
+    )
     return {
       date: key,
       pulse: localScore(day, dayHasDuration),
       active_seconds: day.reduce((sum, activity) => sum + Math.max(activity.durationSeconds ?? 0, 0), 0),
       productive_percent: dayTotalUnits > 0 ? (dayProductiveUnits / dayTotalUnits) * 100 : 0,
+      coverage_percent: dayTotalUnits > 0 ? (dayClassifiedUnits / dayTotalUnits) * 100 : 0,
     }
   })
 
@@ -283,10 +468,27 @@ export function buildLocalEfficiencyReport(
           evidence: topCategory ? `该分类占本周期记录的 ${topCategory.percent.toFixed(0)}%。` : undefined,
           action: '结合应用排行检查时间投入是否符合本周期目标。',
         },
+        ...(previousAvailable ? [{
+          title: `投入较上周${totalSeconds >= previousTotalSeconds ? '增加' : '减少'} ${Math.abs(percentChange(totalSeconds, previousTotalSeconds) ?? 0).toFixed(0)}%`,
+          evidence: `本周期 ${Math.round(totalSeconds / 360) / 10} 小时，上周同期 ${Math.round(previousTotalSeconds / 360) / 10} 小时；专注占比变化 ${productivePercentChange > 0 ? '+' : ''}${productivePercentChange.toFixed(1)} 个百分点。`,
+          action: focus.interruptionCount > 0 ? '下周先固定一段免打扰时间，再集中处理沟通消息。' : '保留当前高产时段，并为下周安排一个可验证的交付目标。',
+        }] : []),
         ...(!hasDuration ? [{
           title: '当前按记录数估算',
           evidence: '这些活动没有可用的持续时长，因此占比和排行按记录条数计算。',
           action: '持续运行采集后，新记录会逐步累积停留时长。',
+        }] : []),
+        ...(focus.interruptionCount > 0 ? [{
+          severity: 'warning',
+          title: `检测到 ${focus.interruptionCount} 次专注打断`,
+          evidence: `打断共占用 ${Math.round(focus.interruptionSeconds / 60)} 分钟，期间发生 ${focus.switchCount} 次应用切换。`,
+          action: '查看打断来源，考虑集中处理沟通或关闭非必要通知。',
+        }] : []),
+        ...(unclassifiedUnits > 0 ? [{
+          severity: 'warning',
+          title: '仍有活动未分类',
+          evidence: `${((unclassifiedUnits / totalUnits) * 100).toFixed(0)}% 的活动尚未命中规则。`,
+          action: '前往时间轴的未分类收件箱，优先处理耗时最高的项目。',
         }] : []),
       ]
 
@@ -312,8 +514,10 @@ export function buildLocalEfficiencyReport(
       pulse: localScore(selected, hasDuration),
       score_status: 'local',
       active_seconds: totalSeconds,
-      category_coverage_percent: selected.length > 0 ? 100 : 0,
-      productive_percent: selected.length > 0 ? (productiveUnits / totalUnits) * 100 : 0,
+      categorized_seconds: hasDuration ? classifiedUnits : undefined,
+      uncategorized_seconds: hasDuration ? unclassifiedUnits : undefined,
+      category_coverage_percent: selected.length > 0 ? (classifiedUnits / totalUnits) * 100 : 0,
+      productive_percent: productivePercent,
       ai_seconds: aiSeconds,
       ai_count: aiCount,
       levels,
@@ -321,13 +525,40 @@ export function buildLocalEfficiencyReport(
       apps,
       domains: [],
       hourly,
-      deep_work: { seconds: focusSeconds, block_count: focusCount, start_hours: [] },
+      deep_work: {
+        seconds: focus.deepSeconds,
+        longest_seconds: focus.longestFocusSeconds,
+        block_count: focus.deepBlockCount,
+        start_hours: focus.deepStartHours,
+      },
+      focus_analysis: {
+        focus_seconds: focus.focusSeconds,
+        longest_focus_seconds: focus.longestFocusSeconds,
+        focus_block_count: focus.focusBlockCount,
+        deep_block_count: focus.deepBlockCount,
+        interruption_count: focus.interruptionCount,
+        interruption_seconds: focus.interruptionSeconds,
+        fragment_count: focus.fragmentCount,
+        fragment_seconds: focus.fragmentSeconds,
+        switch_count: focus.switchCount,
+        top_interruptions: focus.topInterruptions,
+      },
     },
-    comparison: { previous_available: false },
+    comparison: {
+      previous_available: previousAvailable,
+      pulse_change: previousAvailable ? localScore(selected, hasDuration) - localScore(previousSelected, previousHasDuration) : null,
+      active_percent_change: previousAvailable ? percentChange(totalSeconds, previousTotalSeconds) : null,
+      productive_percent_change: previousAvailable ? productivePercentChange : null,
+    },
     baseline: { sample_count: trend.filter(item => item.active_seconds > 0 || item.pulse > 0).length, sufficient: false },
     trend,
     insights,
-    rule_health: { rule_count: 0, issue_count: 0, coverage_percent: selected.length > 0 ? 100 : 0, suggestions: [] },
+    rule_health: {
+      rule_count: classificationRules.filter(rule => rule.enabled).length,
+      issue_count: ruleIssues(classificationRules),
+      coverage_percent: selected.length > 0 ? (classifiedUnits / totalUnits) * 100 : 0,
+      suggestions: ruleSuggestions,
+    },
   }
 }
 

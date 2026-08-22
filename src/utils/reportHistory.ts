@@ -4,6 +4,8 @@
  * [P0优化] 业务逻辑100%保留，历史记录CRUD+SQLite同步完整保留
  * [P1优化] 数据规范化、去重、容量限制逻辑不变
  */
+import { localDateKey } from './date'
+
 export type ReportType = 'daily' | 'weekly' | 'monthly'
 
 export interface ReportHistoryItem {
@@ -16,6 +18,53 @@ export interface ReportHistoryItem {
 
 const REPORT_HISTORY_KEY = 'moji-report-history'
 const MAX_REPORT_HISTORY = 20
+
+function validDateKey(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+export function createReportHistoryId(sourceDate: string): string {
+  const date = validDateKey(sourceDate) ? sourceDate : localDateKey(new Date())
+  return `${date}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+}
+
+export function reportSourceDate(item: Pick<ReportHistoryItem, 'id' | 'createdAt'>): string {
+  const encoded = item.id.slice(0, 10)
+  return validDateKey(encoded) ? encoded : localDateKey(item.createdAt)
+}
+
+export function filterActivitiesForReportPeriod<T extends { timestamp: string }>(
+  activities: T[],
+  type: ReportType,
+  sourceDate: string,
+): T[] {
+  if (type === 'daily') {
+    return activities.filter(item => localDateKey(item.timestamp) === sourceDate)
+  }
+
+  const [year, month, day] = sourceDate.split('-').map(Number)
+  if (!year || !month || !day) return []
+
+  if (type === 'monthly') {
+    return activities.filter(item => {
+      const date = new Date(item.timestamp)
+      return date.getFullYear() === year && date.getMonth() + 1 === month
+    })
+  }
+
+  const target = new Date(year, month - 1, day, 12)
+  const weekday = target.getDay() || 7
+  const monday = new Date(target)
+  monday.setDate(target.getDate() - weekday + 1)
+  monday.setHours(0, 0, 0, 0)
+  const nextMonday = new Date(monday)
+  nextMonday.setDate(monday.getDate() + 7)
+
+  return activities.filter(item => {
+    const timestamp = new Date(item.timestamp).getTime()
+    return timestamp >= monday.getTime() && timestamp < nextMonday.getTime()
+  })
+}
 
 export function hasStoredReportHistory(): boolean {
   return localStorage.getItem(REPORT_HISTORY_KEY) !== null
@@ -94,9 +143,10 @@ export function addReportHistoryItem(
   type: ReportType,
   content: string,
   template = 'standard',
+  sourceDate = localDateKey(new Date()),
 ): ReportHistoryItem[] {
   const nextItem: ReportHistoryItem = {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    id: createReportHistoryId(sourceDate),
     createdAt: new Date().toISOString(),
     type,
     template,

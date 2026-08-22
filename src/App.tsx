@@ -1,20 +1,29 @@
-import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ActivityProvider, useActivityStore, type ThemeMode } from './stores/activityStore'
 import { Settings } from './components/Settings'
 import { ActivityTimeline } from './components/ActivityTimeline'
 import { ReportView } from './components/ReportView'
 import { TodayOverview } from './components/TodayOverview'
+import { CaptureHealth } from './components/CaptureHealth'
+import { ActivitySearch } from './components/ActivitySearch'
+import { WeeklyPlanComparison } from './components/WeeklyPlanComparison'
+import { OnboardingDialog } from './components/OnboardingDialog'
 import { useAutoCapture } from './hooks/useAutoCapture'
 import mojiMark from './assets/moji-mark-v2.png'
 import { getAppearanceSkin } from './utils/appearance'
 import { categoryVisual } from './utils/categoryStyles'
 import { localDateKey } from './utils/date'
+import { isDemoActivity } from './utils/demoData'
+import { recordDiagnostic } from './utils/diagnostics'
+import { dbStartLocalApi, dbStopLocalApi } from './utils/db'
 
 function isToday(iso: string) {
   return localDateKey(iso) === localDateKey(new Date())
 }
 
-type Page = 'dashboard' | 'timeline' | 'report' | 'settings'
+type Page = 'dashboard' | 'timeline' | 'search' | 'report' | 'health' | 'settings'
+
+const ONBOARDING_KEY = 'moji-onboarding-v1'
 
 const NAV_ITEMS: Array<{ page: Page; label: string; iconPath: string }> = [
   {
@@ -31,6 +40,16 @@ const NAV_ITEMS: Array<{ page: Page; label: string; iconPath: string }> = [
     page: 'report',
     label: '报告',
     iconPath: 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z',
+  },
+  {
+    page: 'health',
+    label: '采集健康',
+    iconPath: 'M3.75 12h3l2.25-6 4.5 12 2.25-6h4.5|M3.75 4.5h16.5v15H3.75z',
+  },
+  {
+    page: 'search',
+    label: '回溯',
+    iconPath: 'M21 21l-4.35-4.35m1.35-5.4a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z',
   },
   {
     page: 'settings',
@@ -53,7 +72,8 @@ function PageHeader({ title, desc, children }: { title: string; desc?: string; c
 }
 
 function Dashboard({ onGoSettings }: { onGoSettings: () => void }) {
-  const { activities } = useActivityStore()
+  const { activities, loadDemoWeek, removeDemoData } = useActivityStore()
+  const [demoMessage, setDemoMessage] = useState<string | null>(null)
 
   const todaySummary = useMemo(() => {
     const todayActivities = activities.filter(activity => isToday(activity.timestamp))
@@ -61,6 +81,17 @@ function Dashboard({ onGoSettings }: { onGoSettings: () => void }) {
   }, [activities])
 
   const latestVisual = todaySummary.latest ? categoryVisual(todaySummary.latest.category) : null
+  const demoCount = activities.filter(isDemoActivity).length
+
+  const handleLoadDemo = async () => {
+    const added = await loadDemoWeek()
+    setDemoMessage(added > 0 ? `已载入 ${added} 条虚构活动，可前往报告查看本周复盘。` : '示例数据已经载入。')
+  }
+
+  const handleRemoveDemo = async () => {
+    const removed = await removeDemoData()
+    setDemoMessage(removed > 0 ? `已移除 ${removed} 条示例活动，真实记录未受影响。` : null)
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-8 py-8">
@@ -70,6 +101,20 @@ function Dashboard({ onGoSettings }: { onGoSettings: () => void }) {
       />
 
       <TodayOverview activities={activities} />
+
+      {(activities.length === 0 || demoCount > 0) && (
+        <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-gray-200 bg-surface/70 px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-gray-900">{demoCount > 0 ? `正在展示示例数据 · ${demoCount} 条` : '还没有可展示的工作记录'}</p>
+            <p className="mt-0.5 text-xs text-gray-500">{demoMessage ?? (demoCount > 0 ? '示例记录带有独立标记，不会覆盖真实活动。' : '载入虚构工作周，立即体验时间线、分类和周复盘。')}</p>
+          </div>
+          {demoCount > 0 ? (
+            <button type="button" onClick={() => void handleRemoveDemo()} className="rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-red-300 hover:text-red-600">移除示例</button>
+          ) : (
+            <button type="button" onClick={() => void handleLoadDemo()} className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800">载入示例周</button>
+          )}
+        </section>
+      )}
 
       {/* 最近活动卡片 - 左侧色条强调 */}
       <section className="rounded-r-xl border-l-4 border-l-brand-500 bg-surface p-4 shadow-card">
@@ -119,6 +164,7 @@ function ReportPage({ activities }: { activities: import('./stores/activityStore
   return (
     <div className="mx-auto max-w-5xl px-8 py-8">
       <PageHeader title="报告" desc="固定格式日报、AI 报告与可选效率分析" />
+      <WeeklyPlanComparison activities={activities} />
       <ReportView activities={activities} />
     </div>
   )
@@ -133,10 +179,22 @@ function SettingsPage() {
   )
 }
 
+function HealthPage({ isRunning, isCapturing, error, captureNow }: { isRunning: boolean; isCapturing: boolean; error: string | null; captureNow: () => void }) {
+  return (
+    <div className="mx-auto max-w-4xl px-8 py-8">
+      <PageHeader title="采集健康" desc="检查窗口采集、后台服务和本地存储是否正常" />
+      <CaptureHealth isRunning={isRunning} isCapturing={isCapturing} captureError={error} onCaptureNow={captureNow} />
+    </div>
+  )
+}
+
 function AppShell() {
   const { settings, activities, updateSettings, isAnalyzing } = useActivityStore()
   const { isRunning, isCapturing, latestScreenshot, error, start, stop, captureNow } = useAutoCapture()
   const [page, setPage] = useState<Page>('dashboard')
+  const mainRef = useRef<HTMLElement>(null)
+  const [pendingStart, setPendingStart] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(() => localStorage.getItem(ONBOARDING_KEY) !== 'done')
   const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
 
   const themeMode = settings.appearance?.themeMode ?? 'system'
@@ -149,11 +207,32 @@ function AppShell() {
   const captureConfigured = localMode || isConfigured
 
   useEffect(() => {
+    if (!('__TAURI_INTERNALS__' in window)) return
+    if (settings.localApiEnabled && settings.localApiToken.length >= 24) {
+      void dbStartLocalApi(settings.localApiPort, settings.localApiToken)
+        .catch(error => recordDiagnostic('local-api', error))
+    } else {
+      void dbStopLocalApi().catch(error => recordDiagnostic('local-api', error))
+    }
+  }, [settings.localApiEnabled, settings.localApiPort, settings.localApiToken])
+
+  useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
     const handleChange = (event: MediaQueryListEvent) => setSystemDark(event.matches)
     setSystemDark(media.matches)
     media.addEventListener('change', handleChange)
     return () => media.removeEventListener('change', handleChange)
+  }, [])
+
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => recordDiagnostic('frontend', event.error ?? event.message)
+    const handleRejection = (event: PromiseRejectionEvent) => recordDiagnostic('frontend-promise', event.reason)
+    window.addEventListener('error', handleError)
+    window.addEventListener('unhandledrejection', handleRejection)
+    return () => {
+      window.removeEventListener('error', handleError)
+      window.removeEventListener('unhandledrejection', handleRejection)
+    }
   }, [])
 
   useLayoutEffect(() => {
@@ -163,6 +242,10 @@ function AppShell() {
     root.dataset.theme = resolvedTheme
     root.dataset.themeMode = themeMode
   }, [resolvedTheme, themeMode])
+
+  useLayoutEffect(() => {
+    if (mainRef.current) mainRef.current.scrollTop = 0
+  }, [page])
 
   // 皮肤同时作用于应用画布与侧栏，避免左右区域割裂。
   useEffect(() => {
@@ -187,6 +270,20 @@ function AppShell() {
     ? (isCapturing ? '本地采集中' : isRunning ? '本地运行中' : '已停止')
     : (isAnalyzing ? 'LLM 分析中' : isCapturing ? '采集中' : isRunning ? '运行中' : '已停止')
   const statusActive = isRunning || isAnalyzing
+
+  useEffect(() => {
+    if (!pendingStart || settings.dataSource !== 'local' || isRunning) return
+    start()
+    setPendingStart(false)
+  }, [isRunning, pendingStart, settings.dataSource, start])
+
+  const handleOnboardingComplete = (action: 'start' | 'configure' | 'demo' | 'later') => {
+    localStorage.setItem(ONBOARDING_KEY, 'done')
+    setShowOnboarding(false)
+    if (action === 'start') setPendingStart(true)
+    if (action === 'configure') setPage('settings')
+    if (action === 'demo') setPage('report')
+  }
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--app-bg)' }}>
@@ -270,7 +367,7 @@ function AppShell() {
       </aside>
 
       {/* 内容区 */}
-      <main className="relative flex-1 overflow-y-auto">
+      <main ref={mainRef} className="relative flex-1 overflow-y-auto">
         {/* 错误提示 */}
         {error && (
           <div className="mx-auto max-w-5xl px-8 pt-6">
@@ -318,7 +415,9 @@ function AppShell() {
 
         {page === 'dashboard' && <Dashboard onGoSettings={() => setPage('settings')} />}
         {page === 'timeline' && <TimelinePage activities={activities} />}
+        {page === 'search' && <ActivitySearch activities={activities} />}
         {page === 'report' && <ReportPage activities={activities} />}
+        {page === 'health' && <HealthPage isRunning={isRunning} isCapturing={isCapturing} error={error} captureNow={() => { void captureNow() }} />}
         {page === 'settings' && <SettingsPage />}
 
         {/* 截图预览浮窗 */}
@@ -335,6 +434,7 @@ function AppShell() {
           </div>
         )}
       </main>
+      {showOnboarding && <OnboardingDialog onComplete={handleOnboardingComplete} />}
     </div>
   )
 }

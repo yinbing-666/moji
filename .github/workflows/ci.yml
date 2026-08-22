@@ -25,6 +25,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Feature tests
+        run: npm run test:features
+
       - name: Build
         run: npm run build
 
@@ -53,4 +56,8 @@ jobs:
 
       - name: Cargo check
         run: cargo check
+        working-directory: src-tauri
+
+      - name: Rust tests
+        run: cargo test --locked
         working-directory: src-tauri

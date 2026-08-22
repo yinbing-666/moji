@@ -56,6 +56,14 @@ export const CATEGORY_VISUALS: Record<Activity['category'], CategoryVisual> = {
     iconBg: 'from-zinc-400 to-zinc-500',
     icon: 'Other',            // 用英文替代emoji 🧩
   },
+  unclassified: {
+    label: '未分类',
+    badge: 'bg-amber-50 text-amber-800 ring-amber-200',
+    dot: 'bg-amber-500',
+    hex: '#d97706',
+    iconBg: 'from-amber-400 to-amber-600',
+    icon: '?',
+  },
 }
 
 export function categoryVisual(category: Activity['category']): CategoryVisual {

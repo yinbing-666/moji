@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     io::{Read, Write},
+    net::{SocketAddr, TcpStream},
     path::PathBuf,
     process::{Child, Command},
     sync::Mutex,
@@ -14,6 +15,11 @@ const INTERNAL_BUCKET_ID: &str = "aw-watcher-window_moji";
 const INTERNAL_DEVICE_ID: &str = "moji";
 
 pub struct InternalAwServer(pub Mutex<Option<Child>>);
+
+pub fn internal_server_available() -> bool {
+    let address = SocketAddr::from(([127, 0, 0, 1], INTERNAL_AW_PORT));
+    TcpStream::connect_timeout(&address, Duration::from_millis(200)).is_ok()
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AwEvent {
@@ -305,6 +311,7 @@ pub fn start_internal_server(app: &AppHandle) -> Result<InternalAwServer, String
         .join("activitywatch");
     std::fs::create_dir_all(&data_dir)
         .map_err(|e| format!("无法创建 ActivityWatch 数据目录: {e}"))?;
+    let database_path = data_dir.join("sqlite.db");
 
     let child = Command::new(&binary)
         .arg("--host")
@@ -312,7 +319,7 @@ pub fn start_internal_server(app: &AppHandle) -> Result<InternalAwServer, String
         .arg("--port")
         .arg(INTERNAL_AW_PORT.to_string())
         .arg("--dbpath")
-        .arg(&data_dir)
+        .arg(&database_path)
         .arg("--device-id")
         .arg(INTERNAL_DEVICE_ID)
         .arg("--no-legacy-import")
@@ -342,12 +349,18 @@ pub fn stop_internal_server(app: &AppHandle) {
 
 fn internal_server_binary(app: &AppHandle) -> Result<PathBuf, String> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let binary_name = if cfg!(target_os = "windows") {
+        "aw-server-rust.exe"
+    } else {
+        "aw-server-rust"
+    };
     let mut candidates = Vec::new();
     if let Ok(resource_dir) = app.path().resource_dir() {
-        candidates.push(resource_dir.join("aw-server-rust.exe"));
+        candidates.push(resource_dir.join("activitywatch").join(binary_name));
+        candidates.push(resource_dir.join(binary_name));
     }
     if let Some(project_root) = manifest.parent() {
-        candidates.push(project_root.join("vendor/activitywatch/aw-server-rust.exe"));
+        candidates.push(project_root.join("vendor/activitywatch").join(binary_name));
     }
 
     candidates

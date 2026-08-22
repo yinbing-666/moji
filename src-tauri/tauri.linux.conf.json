@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "targets": ["deb", "appimage"],
+    "resources": {
+      "vendor/activitywatch/aw-server-rust": "activitywatch/aw-server-rust"
+    }
+  }
+}

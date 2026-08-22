@@ -16,10 +16,26 @@ import {
   isSqliteAvailable,
   type DbReportHistory,
 } from '../utils/db'
-import { hasStoredReportHistory, loadReportHistory, removeReportHistoryItem, saveReportHistory, type ReportHistoryItem } from '../utils/reportHistory'
-import { localDateKey } from '../utils/date'
+import {
+  filterActivitiesForReportPeriod,
+  hasStoredReportHistory,
+  loadReportHistory,
+  removeReportHistoryItem,
+  saveReportHistory,
+  type ReportHistoryItem,
+} from '../utils/reportHistory'
+import { createSyncDeviceId, resolveSyncDeviceId } from '../utils/syncDeviceId'
 import { generateLocalDailyReport } from '../utils/localReport'
 import { getTemplateDescription, loadCustomTemplates } from '../utils/templates'
+import { createDemoWeek, isDemoActivity } from '../utils/demoData'
+import {
+  ACTIVITY_CATEGORIES,
+  classifyWindow,
+  cloneDefaultClassificationRules,
+  normalizeClassificationRules,
+  type ActivityCategory,
+  type ClassificationRule,
+} from '../utils/classificationRules'
 
 export type BackgroundPreset = 'plain' | 'mint' | 'sky' | 'graphite' | 'custom'
 export type ThemeMode = 'system' | 'light' | 'dark'
@@ -34,13 +50,16 @@ export interface Appearance {
 export interface Activity {
   id: string
   timestamp: string
-  category: 'dev' | 'meeting' | 'doc' | 'communication' | 'other'
+  category: ActivityCategory
   app: string
   title: string
   description: string
   screenshotBase64?: string
   /** 该活动的持续秒数（AW 源为事件时长；UIA 源按连续采集周期累计），无值表示未知 */
   durationSeconds?: number
+  /** 可选上下文仅在用户显式开启对应采集项后保存。 */
+  browserDomain?: string
+  ideProject?: string
 }
 
 /* 数据模式：LLM 窗口识别，或本地确定性分类（无需 LLM / ActivityWatch） */
@@ -62,6 +81,21 @@ export interface Settings {
   awHost: string
   awPort: number
   awSyncMinutes: number
+  classificationRules: ClassificationRule[]
+  idleThresholdMinutes: number
+  captureBrowserDomains: boolean
+  captureIdeProjects: boolean
+  retentionDays: number
+  localApiEnabled: boolean
+  localApiPort: number
+  localApiToken: string
+  launchAtLogin: boolean
+  globalShortcutEnabled: boolean
+  systemNotificationsEnabled: boolean
+  syncFolder: string
+  syncPassword: string
+  syncDeviceId: string
+  lastSyncAt: string
 }
 
 interface ActivityStore {
@@ -73,6 +107,7 @@ interface ActivityStore {
   /** 导入用：保留原始 id / timestamp */
   importActivity: (activity: Activity) => boolean
   updateActivity: (id: string, partial: Partial<Omit<Activity, 'id' | 'timestamp'>>) => void
+  updateActivitiesCategory: (ids: string[], category: ActivityCategory) => void
   removeActivity: (id: string) => void
   clearActivities: () => void
   /** 从 SQLite 重新加载（备份恢复后用） */
@@ -98,9 +133,11 @@ interface ActivityStore {
   importActivitiesFromJson: (data: unknown) => Promise<number>
   exportActivitiesAsJson: () => Promise<string>
   clearAllActivities: () => Promise<void>
+  loadDemoWeek: () => Promise<number>
+  removeDemoData: () => Promise<number>
 }
 
-const ACTIVITY_CATEGORIES = ['dev', 'meeting', 'doc', 'communication', 'other'] as const
+const DEFAULT_SYNC_DEVICE_ID = createSyncDeviceId()
 
 const DEFAULT_SETTINGS: Settings = {
   apiKey: '',
@@ -116,8 +153,23 @@ const DEFAULT_SETTINGS: Settings = {
   appearance: { themeMode: 'system', backgroundPreset: 'plain' },
   dataSource: 'llm',
   awHost: '127.0.0.1',
-  awPort: 5600,
+  awPort: 5601,
   awSyncMinutes: 5,
+  classificationRules: cloneDefaultClassificationRules(),
+  idleThresholdMinutes: 5,
+  captureBrowserDomains: false,
+  captureIdeProjects: false,
+  retentionDays: 0,
+  localApiEnabled: false,
+  localApiPort: 5610,
+  localApiToken: '',
+  launchAtLogin: false,
+  globalShortcutEnabled: false,
+  systemNotificationsEnabled: false,
+  syncFolder: '',
+  syncPassword: '',
+  syncDeviceId: DEFAULT_SYNC_DEVICE_ID,
+  lastSyncAt: '',
 }
 
 const LEGACY_DEFAULT_EXCLUDED_KEYWORDS = ['微信', 'WeChat', 'QQ', 'Mail', '邮箱', 'Password', 'Token', 'Bank']
@@ -126,25 +178,10 @@ const STORAGE_KEY = 'xiaohei-activities'
 const SETTINGS_KEY = 'xiaohei-settings'
 // API Key 单独存储，避免与普通设置混在一起被整体序列化（后续可迁移到 Tauri 安全存储）
 const SETTINGS_KEY_API = 'xiaohei-settings-api-key'
+const SETTINGS_KEY_SYNC_PASSWORD = 'xiaohei-settings-sync-password'
 
 function createActivityId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
-}
-
-/** AW 窗口标题/应用 → 墨记分类（关键词规则，零成本替代 AI 识别） */
-const CATEGORY_RULES: Array<{ category: Activity['category']; patterns: RegExp }> = [
-  { category: 'dev', patterns: /vscode|code\.exe|visual studio|terminal|cmd|powershell|git|github|jetbrains|pycharm|webstorm|idea|claude|codex|docker|sql|python|node|chrome.*devtools|localhost|127\.0\.0\.1|:3000|:1420/i },
-  { category: 'doc', patterns: /word|document|wps|notion|obsidian|typora|markdown|\.md|excel|ppt|pdf|readme|笔记|文档|写作|墨记/i },
-  { category: 'communication', patterns: /微信|wechat|qq|dingtalk|钉钉|飞书|feishu|lark|slack|telegram|discord|企业微信|whatsapp|邮箱|mail|outlook|163|gmail/i },
-  { category: 'meeting', patterns: /zoom|腾讯会议|meeting|teams|meet|会议|语音|直播|bilibili|抖音|虎牙|youtube|视频/i },
-]
-
-export function classifyAwWindow(app: string, title: string): Activity['category'] {
-  const haystack = `${app} ${title}`
-  for (const rule of CATEGORY_RULES) {
-    if (rule.patterns.test(haystack)) return rule.category
-  }
-  return 'other'
 }
 
 /** 把 AW 事件转成墨记活动；重复窗口短停留直接过滤 */
@@ -152,14 +189,14 @@ export function awEventToActivity(event: {
   timestamp: string
   duration: number
   data: { app?: string; title?: string }
-}): Omit<Activity, 'id' | 'timestamp'> | null {
+}, rules = cloneDefaultClassificationRules()): Omit<Activity, 'id' | 'timestamp'> | null {
   const app = (event.data?.app || '未知应用').trim()
   const title = (event.data?.title || '').trim()
   if (!app && !title) return null
   // 少于 10 秒的窗口切换不记录，避免噪音
   if (event.duration < 10) return null
 
-  const category = classifyAwWindow(app, title)
+  const category = classifyWindow(app, title, rules)
   const durationText = event.duration >= 60
     ? `（${Math.round(event.duration / 60)} 分钟）`
     : `（${Math.round(event.duration)} 秒）`
@@ -175,7 +212,7 @@ export function awEventToActivity(event: {
 
 function isActivityCategory(value: unknown): value is Activity['category'] {
   return typeof value === 'string'
-    && (ACTIVITY_CATEGORIES as readonly string[]).includes(value)
+    && ACTIVITY_CATEGORIES.includes(value as ActivityCategory)
 }
 
 function normalizeString(value: unknown, fallback = ''): string {
@@ -192,8 +229,14 @@ function normalizeActivity(value: unknown): Activity | null {
   const screenshotBase64 = typeof item.screenshotBase64 === 'string' && item.screenshotBase64.trim()
     ? item.screenshotBase64
     : undefined
-  const durationSeconds = typeof item.durationSeconds === 'number' && Number.isFinite(item.durationSeconds) && item.durationSeconds > 0
+  const durationSeconds = typeof item.durationSeconds === 'number' && Number.isFinite(item.durationSeconds) && item.durationSeconds >= 0
     ? Math.round(item.durationSeconds)
+    : undefined
+  const browserDomain = typeof item.browserDomain === 'string' && item.browserDomain.trim()
+    ? item.browserDomain.trim().slice(0, 120)
+    : undefined
+  const ideProject = typeof item.ideProject === 'string' && item.ideProject.trim()
+    ? item.ideProject.trim().slice(0, 80)
     : undefined
 
   return {
@@ -205,6 +248,8 @@ function normalizeActivity(value: unknown): Activity | null {
     description: normalizeString(item.description, '无描述').trim() || '无描述',
     ...(screenshotBase64 ? { screenshotBase64 } : {}),
     ...(durationSeconds !== undefined ? { durationSeconds } : {}),
+    ...(browserDomain ? { browserDomain } : {}),
+    ...(ideProject ? { ideProject } : {}),
   }
 }
 
@@ -323,8 +368,32 @@ function loadSettings(): Settings {
       // 兼容旧配置：window_text / both 代表有 LLM，aw 代表无 LLM。
       dataSource: saved.dataSource === 'aw' || saved.dataSource === 'local' ? 'local' : 'llm',
       awHost: typeof saved.awHost === 'string' && saved.awHost.trim() ? saved.awHost.trim() : DEFAULT_SETTINGS.awHost,
-      awPort: Number.isFinite(saved.awPort) && saved.awPort > 0 ? Math.round(saved.awPort) : DEFAULT_SETTINGS.awPort,
+      // 内置服务从旧版外部 ActivityWatch 默认端口 5600 迁移到墨记专用 5601。
+      awPort: Number.isFinite(saved.awPort) && saved.awPort > 0 && Math.round(saved.awPort) !== 5600
+        ? Math.round(saved.awPort)
+        : DEFAULT_SETTINGS.awPort,
       awSyncMinutes: Number.isFinite(saved.awSyncMinutes) && saved.awSyncMinutes > 0 ? Math.round(saved.awSyncMinutes) : DEFAULT_SETTINGS.awSyncMinutes,
+      classificationRules: normalizeClassificationRules(saved.classificationRules),
+      idleThresholdMinutes: Number.isFinite(saved.idleThresholdMinutes)
+        ? Math.min(30, Math.max(1, Math.round(saved.idleThresholdMinutes)))
+        : DEFAULT_SETTINGS.idleThresholdMinutes,
+      captureBrowserDomains: Boolean(saved.captureBrowserDomains),
+      captureIdeProjects: Boolean(saved.captureIdeProjects),
+      retentionDays: [0, 30, 90, 180, 365].includes(Number(saved.retentionDays))
+        ? Number(saved.retentionDays)
+        : DEFAULT_SETTINGS.retentionDays,
+      localApiEnabled: Boolean(saved.localApiEnabled),
+      localApiPort: Number.isFinite(saved.localApiPort)
+        ? Math.min(65535, Math.max(1024, Math.round(saved.localApiPort)))
+        : DEFAULT_SETTINGS.localApiPort,
+      localApiToken: typeof saved.localApiToken === 'string' ? saved.localApiToken : '',
+      launchAtLogin: Boolean(saved.launchAtLogin),
+      globalShortcutEnabled: Boolean(saved.globalShortcutEnabled),
+      systemNotificationsEnabled: Boolean(saved.systemNotificationsEnabled),
+      syncFolder: typeof saved.syncFolder === 'string' ? saved.syncFolder : '',
+      syncPassword: localStorage.getItem(SETTINGS_KEY_SYNC_PASSWORD) ?? '',
+      syncDeviceId: resolveSyncDeviceId(saved.syncDeviceId, DEFAULT_SYNC_DEVICE_ID),
+      lastSyncAt: typeof saved.lastSyncAt === 'string' ? saved.lastSyncAt : '',
     }
   } catch {
     return DEFAULT_SETTINGS
@@ -371,13 +440,18 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    // 主设置对象剥离 apiKey 后持久化；apiKey 单独存储（避免与其他设置同桶）
-    const { apiKey, ...rest } = settings
+    // API Key 和同步密码单独存储，避免进入普通设置对象及其导出链路。
+    const { apiKey, syncPassword, ...rest } = settings
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest))
     if (apiKey) {
       localStorage.setItem(SETTINGS_KEY_API, apiKey)
     } else {
       localStorage.removeItem(SETTINGS_KEY_API)
+    }
+    if (syncPassword) {
+      localStorage.setItem(SETTINGS_KEY_SYNC_PASSWORD, syncPassword)
+    } else {
+      localStorage.removeItem(SETTINGS_KEY_SYNC_PASSWORD)
     }
   }, [settings])
 
@@ -420,6 +494,8 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
             description: a.description,
             screenshotBase64: a.screenshot_base64 ?? undefined,
             durationSeconds: a.duration_seconds ?? undefined,
+            browserDomain: a.browser_domain ?? undefined,
+            ideProject: a.ide_project ?? undefined,
           })).filter((a): a is Activity => a !== null)
           const latest = activitiesRef.current
           const mapped = latest === initialActivities
@@ -502,11 +578,12 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
         && Math.abs(activityEnd - ts) < duplicateWindowMs
     })
     if (duplicate) {
-      if (newActivity.durationSeconds === undefined) {
-        updateActivity(duplicate.id, {
-          durationSeconds: (duplicate.durationSeconds ?? 0) + Math.max(60, settings.intervalSeconds),
-        })
-      }
+      updateActivity(duplicate.id, {
+        durationSeconds: (duplicate.durationSeconds ?? 0)
+          + (newActivity.durationSeconds ?? Math.max(60, settings.intervalSeconds)),
+        ...(newActivity.browserDomain ? { browserDomain: newActivity.browserDomain } : {}),
+        ...(newActivity.ideProject ? { ideProject: newActivity.ideProject } : {}),
+      })
       return
     }
     const next = [newActivity, ...activitiesRef.current]
@@ -514,6 +591,22 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     setActivities(next)
     saveToSqlite(newActivity)
   }, [saveToSqlite, settings.intervalSeconds, updateActivity])
+
+  const updateActivitiesCategory = useCallback((ids: string[], category: ActivityCategory) => {
+    const idSet = new Set(ids)
+    if (idSet.size === 0) return
+    const updated: Activity[] = []
+    const next = activitiesRef.current.map(activity => {
+      if (!idSet.has(activity.id) || activity.category === category) return activity
+      const changed = { ...activity, category }
+      updated.push(changed)
+      return changed
+    })
+    if (updated.length === 0) return
+    activitiesRef.current = next
+    setActivities(next)
+    updated.forEach(saveToSqlite)
+  }, [saveToSqlite])
 
   const importActivity = useCallback((activity: Activity): boolean => {
     const normalized = normalizeActivity(activity)
@@ -553,6 +646,8 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       description: a.description,
       screenshotBase64: a.screenshot_base64 ?? undefined,
       durationSeconds: a.duration_seconds ?? undefined,
+      browserDomain: a.browser_domain ?? undefined,
+      ideProject: a.ide_project ?? undefined,
     })).filter((a): a is Activity => a !== null)
     activitiesRef.current = mapped
     setActivities(mapped)
@@ -605,7 +700,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
 
       const now = Date.now()
       for (const event of result.events) {
-        const activity = awEventToActivity(event)
+        const activity = awEventToActivity(event, settings.classificationRules)
         if (!activity) continue
 
         // 用事件时间戳作为记录时间（AW 返回 ISO 字符串）
@@ -633,7 +728,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     } finally {
       awSyncingRef.current = false
     }
-  }, [settings.awHost, settings.awPort, saveToSqlite])
+  }, [settings.awHost, settings.awPort, settings.classificationRules, saveToSqlite])
 
   /* P1优化: 测试AI连接 */
   const testAiConnectionCallback = useCallback(async (config?: Pick<Settings, 'apiKey' | 'baseUrl' | 'textModel'>) => {
@@ -657,30 +752,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   const generateDailyReport = useCallback(async (date: string, templateKey = 'standard', reportType: 'daily' | 'weekly' | 'monthly' = 'daily') => {
     setIsGeneratingReport(true)
     try {
-      // 根据报告类型筛选活动数据
-      let dayActivities: Activity[] = []
-      if (reportType === 'daily') {
-        dayActivities = activitiesRef.current.filter(a => localDateKey(a.timestamp) === date)
-      } else if (reportType === 'weekly') {
-        const targetDate = new Date(date)
-        const dayOfWeek = targetDate.getDay() || 7
-        const monday = new Date(targetDate)
-        monday.setDate(targetDate.getDate() - dayOfWeek + 1)
-        monday.setHours(0, 0, 0, 0)
-        const sunday = new Date(monday)
-        sunday.setDate(monday.getDate() + 6)
-        sunday.setHours(23, 59, 59, 999)
-        dayActivities = activitiesRef.current.filter(a => {
-          const t = new Date(a.timestamp).getTime()
-          return t >= monday.getTime() && t <= sunday.getTime()
-        })
-      } else if (reportType === 'monthly') {
-        const [yearStr, monthStr] = date.split('-')
-        dayActivities = activitiesRef.current.filter(a => {
-          const d = new Date(a.timestamp)
-          return d.getFullYear() === Number(yearStr) && (d.getMonth() + 1) === Number(monthStr)
-        })
-      }
+      const dayActivities = filterActivitiesForReportPeriod(activitiesRef.current, reportType, date)
 
       let reportContent: string
 
@@ -692,7 +764,11 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
         reportContent = await generateReport(
           dayActivities.map(a => ({
             timestamp: a.timestamp,
-            description: a.description,
+            description: [
+              a.description,
+              a.browserDomain ? `浏览器域名：${a.browserDomain}` : '',
+              a.ideProject ? `IDE 项目：${a.ideProject}` : '',
+            ].filter(Boolean).join('；'),
             category: a.category,
             app_name: a.app,
           })),
@@ -706,7 +782,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
 
       // 保存到历史记录并展示在界面上
       const { addReportHistoryItem } = await import('../utils/reportHistory')
-      const nextHistory = addReportHistoryItem(loadReportHistory(), reportType, reportContent, templateKey)
+      const nextHistory = addReportHistoryItem(loadReportHistory(), reportType, reportContent, templateKey, date)
       setReportHistory(nextHistory)
       setLastReport(nextHistory[0] ?? null)
     } finally {
@@ -762,16 +838,38 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     }
   }, [clearActivities, sqliteReady])
 
+  const loadDemoWeek = useCallback(async (): Promise<number> => {
+    const existingIds = new Set(activitiesRef.current.map(activity => activity.id))
+    const additions = createDemoWeek().filter(activity => !existingIds.has(activity.id))
+    if (additions.length === 0) return 0
+    const next = [...additions, ...activitiesRef.current]
+      .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+    activitiesRef.current = next
+    setActivities(next)
+    if (sqliteReady) await dbReplaceActivities(JSON.stringify(next))
+    return additions.length
+  }, [sqliteReady])
+
+  const removeDemoData = useCallback(async (): Promise<number> => {
+    const next = activitiesRef.current.filter(activity => !isDemoActivity(activity))
+    const removed = activitiesRef.current.length - next.length
+    if (removed === 0) return 0
+    activitiesRef.current = next
+    setActivities(next)
+    if (sqliteReady) await dbReplaceActivities(JSON.stringify(next))
+    return removed
+  }, [sqliteReady])
+
   return (
     <ActivityContext.Provider value={{
       activities, settings, isAnalyzing, sqliteReady,
-      addActivity, importActivity, updateActivity, removeActivity, clearActivities,
+      addActivity, importActivity, updateActivity, updateActivitiesCategory, removeActivity, clearActivities,
       reloadFromSqlite, updateSettings: updateSettingsCallback, setIsAnalyzing, syncFromAw,
       generateDailyReport, isGeneratingReport, connectionTestResult,
       lastReport, reportHistory, viewReport, deleteReport,
       testAiConnection: testAiConnectionCallback,
       importActivitiesFromJson, exportActivitiesAsJson: exportActivitiesAsJsonCallback,
-      clearAllActivities,
+      clearAllActivities, loadDemoWeek, removeDemoData,
     }}>
       {children}
     </ActivityContext.Provider>

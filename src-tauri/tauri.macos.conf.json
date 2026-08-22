@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "targets": ["app", "dmg"],
+    "resources": {
+      "vendor/activitywatch/aw-server-rust": "activitywatch/aw-server-rust"
+    }
+  }
+}

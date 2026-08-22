@@ -3,6 +3,8 @@ import { useActivityStore, type Activity } from '../stores/activityStore'
 import { categoryVisual } from '../utils/categoryStyles'
 import { formatDuration } from '../utils/format'
 import { ScreenshotModal } from './ScreenshotModal'
+import { UnclassifiedInbox } from './UnclassifiedInbox'
+import { matchClassificationRules } from '../utils/classificationRules'
 
 interface ActivityTimelineProps {
   activities: Activity[]
@@ -10,7 +12,7 @@ interface ActivityTimelineProps {
 
 type CategoryFilter = 'all' | Activity['category']
 
-const CATEGORY_OPTIONS: CategoryFilter[] = ['all', 'dev', 'meeting', 'doc', 'communication', 'other']
+const CATEGORY_OPTIONS: CategoryFilter[] = ['all', 'unclassified', 'dev', 'meeting', 'doc', 'communication', 'other']
 
 function isToday(iso: string) {
   return new Date(iso).toDateString() === new Date().toDateString()
@@ -30,7 +32,7 @@ function dateGroupLabel(iso: string): string {
 }
 
 export function ActivityTimeline({ activities }: ActivityTimelineProps) {
-  const { updateActivity, removeActivity } = useActivityStore()
+  const { settings, updateActivity, removeActivity } = useActivityStore()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [previewBase64, setPreviewBase64] = useState<string | null>(null)
@@ -82,6 +84,7 @@ export function ActivityTimeline({ activities }: ActivityTimelineProps) {
 
   return (
     <div>
+      <UnclassifiedInbox activities={activities} />
       {/* 筛选工具栏 */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[180px] flex-1">
@@ -164,6 +167,9 @@ export function ActivityTimeline({ activities }: ActivityTimelineProps) {
                   const visual = categoryVisual(activity.category)
                   const isEditing = editingId === activity.id
                   const durationText = formatDuration(activity.durationSeconds)
+                  const ruleMatches = matchClassificationRules(activity.app, activity.title, settings.classificationRules)
+                  const ruleMatch = ruleMatches[0]
+                  const ruleMatchesCategory = ruleMatch?.rule.category === activity.category
 
                   return (
                     <article
@@ -252,6 +258,26 @@ export function ActivityTimeline({ activities }: ActivityTimelineProps) {
                               ) : (
                                 <p className="mt-1.5 text-sm leading-relaxed text-gray-700">
                                   {activity.description || '无描述'}
+                                </p>
+                              )}
+                              {!isEditing && (activity.browserDomain || activity.ideProject) && (
+                                <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-gray-600">
+                                  {activity.browserDomain && <span className="rounded-md bg-gray-100 px-2 py-1">域名 · {activity.browserDomain}</span>}
+                                  {activity.ideProject && <span className="rounded-md bg-gray-100 px-2 py-1">项目 · {activity.ideProject}</span>}
+                                </div>
+                              )}
+                              {!isEditing && (
+                                <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-4 text-gray-400">
+                                  {ruleMatch ? (
+                                    <>
+                                      <span>{ruleMatchesCategory ? `规则「${ruleMatch.rule.name}」` : `当前分类已修正；规则「${ruleMatch.rule.name}」会归为${categoryVisual(ruleMatch.rule.category).label}`}</span>
+                                      <span>·</span>
+                                      <span>{ruleMatch.source === 'app' ? '应用名' : '窗口标题'}包含“{ruleMatch.keyword}”</span>
+                                      {ruleMatches.length > 1 && <span className="text-amber-600">· 另有 {ruleMatches.length - 1} 条规则也会命中</span>}
+                                    </>
+                                  ) : (
+                                    <span>{activity.category === 'unclassified' ? '未命中任何启用的本地规则' : '由 AI 或人工归类，未命中本地规则'}</span>
+                                  )}
                                 </p>
                               )}
                             </div>

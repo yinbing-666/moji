@@ -253,13 +253,27 @@ fn capture_visible_windows_impl(
 
 #[cfg(not(target_os = "windows"))]
 fn capture_visible_windows_impl(
-    _excluded_keywords: Vec<String>,
+    excluded_keywords: Vec<String>,
     _capture_images: bool,
 ) -> Result<Vec<CapturedWindow>, String> {
-    Err(
-        "capture_visible_windows is unsupported on this platform because reliable window enumeration and privacy filtering are unavailable"
-            .to_string(),
-    )
+    let foreground = crate::system::get_foreground_window()?;
+    if excluded_match(&foreground.title, &foreground.process_name, &excluded_keywords) {
+        return Ok(Vec::new());
+    }
+    Ok(vec![CapturedWindow {
+        hwnd: "foreground".to_string(),
+        pid: 0,
+        title: foreground.title,
+        process_name: foreground.process_name,
+        process_path: String::new(),
+        is_foreground: true,
+        z_index: 0,
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        image_base64: String::new(),
+    }])
 }
 
 #[cfg(target_os = "windows")]

@@ -3,9 +3,11 @@ import type { Activity } from '../stores/activityStore'
 import { useActivityStore } from '../stores/activityStore'
 import { categoryVisual } from '../utils/categoryStyles'
 import { exportReportAsMarkdown } from '../utils/export'
+import { dbExportReportPdf, dbSendSystemNotification } from '../utils/db'
 import { formatDuration } from '../utils/format'
-import { todayDateKey, localDateKey } from '../utils/date'
+import { todayDateKey } from '../utils/date'
 import { calculateReportQuality } from '../utils/reportQuality'
+import { filterActivitiesForReportPeriod, reportSourceDate, type ReportType } from '../utils/reportHistory'
 import {
   BUILTIN_TEMPLATES,
   addCustomTemplate,
@@ -54,6 +56,53 @@ function reportPresentation(content: string) {
   }
 }
 
+function buildReportData(activities: Activity[], type: ReportType, sourceDate: string) {
+  const periodActivities = filterActivitiesForReportPeriod(activities, type, sourceDate)
+  if (periodActivities.length === 0) return null
+
+  const appMap = new Map<string, { count: number; duration: number; categories: Set<Activity['category']> }>()
+  const categoryMap = new Map<Activity['category'], number>()
+  const hourlyBuckets = Array.from({ length: 24 }, () => 0)
+  const hourlyCategories: Map<Activity['category'], number>[] = Array.from({ length: 24 }, () => new Map())
+
+  for (const activity of periodActivities) {
+    const app = appMap.get(activity.app) || { count: 0, duration: 0, categories: new Set() }
+    app.count++
+    app.duration += activity.durationSeconds ?? 0
+    app.categories.add(activity.category)
+    appMap.set(activity.app, app)
+    categoryMap.set(activity.category, (categoryMap.get(activity.category) || 0) + 1)
+
+    const hour = new Date(activity.timestamp).getHours()
+    hourlyBuckets[hour]++
+    hourlyCategories[hour].set(activity.category, (hourlyCategories[hour].get(activity.category) || 0) + 1)
+  }
+
+  const hourlyDominant = hourlyCategories.map(categories => {
+    let best: Activity['category'] | null = null
+    let bestCount = 0
+    for (const [category, count] of categories) {
+      if (count > bestCount) {
+        best = category
+        bestCount = count
+      }
+    }
+    return best
+  })
+
+  return {
+    total: periodActivities.length,
+    date: sourceDate,
+    quality: calculateReportQuality(periodActivities),
+    apps: Array.from(appMap.entries())
+      .map(([app, data]) => ({ app, ...data, categories: Array.from(data.categories) }))
+      .sort((a, b) => b.count - a.count),
+    categories: Array.from(categoryMap.entries()).sort((a, b) => b[1] - a[1]),
+    hourly: hourlyBuckets,
+    hourlyDominant,
+  }
+}
+
 export function ReportView({ activities }: ReportViewProps) {
   const {
     settings,
@@ -75,6 +124,8 @@ export function ReportView({ activities }: ReportViewProps) {
   const [templateError, setTemplateError] = useState<string | null>(null)
   const [reportType, setReportType] = useState<'daily' | 'weekly' | 'monthly'>('daily')
   const [activeTab, setActiveTab] = useState<'daily' | 'efficiency'>('daily')
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfMsg, setPdfMsg] = useState<string | null>(null)
   const reportContentRef = useRef<HTMLElement | null>(null)
   const isLocalMode = settings.dataSource === 'local'
   const effectiveTemplate = isLocalMode && selectedTemplate.startsWith('custom:') ? 'standard' : selectedTemplate
@@ -163,13 +214,49 @@ export function ReportView({ activities }: ReportViewProps) {
 
   const handleDownloadReport = () => {
     if (!lastReport) return
-    const label = `${REPORT_TYPE_LABEL[lastReport.type] ?? '报告'}-${localDateKey(lastReport.createdAt)}`
+    const label = `${REPORT_TYPE_LABEL[lastReport.type] ?? '报告'}-${reportSourceDate(lastReport)}`
     exportReportAsMarkdown(lastReport.content, label)
   }
 
   const handlePrintReport = () => {
     if (!lastReport) return
     window.print()
+  }
+
+  const handleExportPdf = async () => {
+    if (!lastReport) return
+    setPdfBusy(true)
+    setPdfMsg(null)
+    try {
+      const typeLabel = REPORT_TYPE_LABEL[lastReport.type] ?? '工作报告'
+      const sourceDate = reportSourceDate(lastReport)
+      const path = await dbExportReportPdf({
+        title: `墨记${typeLabel}-${sourceDate}`,
+        reportType: typeLabel,
+        createdAt: new Date(lastReport.createdAt).toLocaleString('zh-CN'),
+        mode: isLocalMode ? '固定格式模式' : 'AI 模式',
+        template: templateLabel(lastReport.template),
+        content: lastReport.content,
+        activityCount: exportReportData?.total ?? 0,
+        categories: (exportReportData?.categories ?? []).map(([category, count]) => ({
+          label: categoryVisual(category).label,
+          value: count,
+        })),
+        topApps: (exportReportData?.apps ?? []).slice(0, 8).map(app => ({ label: app.app, value: app.count })),
+      })
+      if (path === null) {
+        setPdfMsg('__TAURI_INTERNALS__' in window ? null : '请在桌面版中导出 PDF')
+        return
+      }
+      setPdfMsg(`PDF 已保存：${path}`)
+      if (settings.systemNotificationsEnabled) {
+        void dbSendSystemNotification('墨记报告已导出', `${typeLabel} PDF 已保存到所选目录`).catch(() => {})
+      }
+    } catch (error) {
+      setPdfMsg(error instanceof Error ? error.message : String(error))
+    } finally {
+      setPdfBusy(false)
+    }
   }
 
   useEffect(() => {
@@ -184,59 +271,14 @@ export function ReportView({ activities }: ReportViewProps) {
     deleteReport(id)
   }
 
-  /* P1优化: 报告数据聚合 */
   const reportData = useMemo(() => {
-    const dayActivities = activities.filter(a => localDateKey(a.timestamp) === reportDate)
-    
-    if (dayActivities.length === 0) {
-      return null
-    }
+    return buildReportData(activities, reportType, reportDate)
+  }, [activities, reportDate, reportType])
 
-    // 按应用统计（含时长聚合）
-    const appMap = new Map<string, { count: number; duration: number; categories: Set<Activity['category']> }>()
-    for (const a of dayActivities) {
-      const existing = appMap.get(a.app) || { count: 0, duration: 0, categories: new Set() }
-      existing.count++
-      existing.duration += a.durationSeconds ?? 0
-      existing.categories.add(a.category)
-      appMap.set(a.app, existing)
-    }
-
-    // 按分类统计
-    const catMap = new Map<Activity['category'], number>()
-    for (const a of dayActivities) {
-      catMap.set(a.category, (catMap.get(a.category) || 0) + 1)
-    }
-
-    // 时间分布（按小时，同时记录每小时主要分类用于着色）
-    const hourlyBuckets = Array.from({ length: 24 }, () => 0)
-    const hourlyCats: Map<Activity['category'], number>[] = Array.from({ length: 24 }, () => new Map())
-    for (const a of dayActivities) {
-      const h = new Date(a.timestamp).getHours()
-      hourlyBuckets[h]++
-      hourlyCats[h].set(a.category, (hourlyCats[h].get(a.category) || 0) + 1)
-    }
-    const hourlyDominant: (Activity['category'] | null)[] = hourlyCats.map(cats => {
-      let best: Activity['category'] | null = null
-      let bestCount = 0
-      for (const [cat, c] of cats) {
-        if (c > bestCount) { best = cat; bestCount = c }
-      }
-      return best
-    })
-
-    return {
-      total: dayActivities.length,
-      date: reportDate,
-      quality: calculateReportQuality(dayActivities),
-      apps: Array.from(appMap.entries())
-        .map(([app, data]) => ({ app, ...data, categories: Array.from(data.categories) }))
-        .sort((a, b) => b.count - a.count),
-      categories: Array.from(catMap.entries()).sort((a, b) => b[1] - a[1]),
-      hourly: hourlyBuckets,
-      hourlyDominant,
-    }
-  }, [activities, reportDate])
+  const exportReportData = useMemo(() => {
+    if (!lastReport) return null
+    return buildReportData(activities, lastReport.type, reportSourceDate(lastReport))
+  }, [activities, lastReport])
 
   const currentPresentation = useMemo(
     () => lastReport ? reportPresentation(lastReport.content) : null,
@@ -247,6 +289,9 @@ export function ReportView({ activities }: ReportViewProps) {
   const handleGenerateReport = async () => {
     try {
       await generateDailyReport(reportDate, effectiveTemplate, reportType)
+      if (settings.systemNotificationsEnabled) {
+        void dbSendSystemNotification('墨记报告已生成', `${REPORT_TYPE_LABEL[reportType]}已保存到报告历史`).catch(() => {})
+      }
     } catch (err) {
       console.error('报告生成失败:', err)
     }
@@ -451,13 +496,22 @@ export function ReportView({ activities }: ReportViewProps) {
               </button>
               <button
                 type="button"
+                onClick={() => void handleExportPdf()}
+                disabled={pdfBusy}
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+              >
+                {pdfBusy ? '导出中…' : '导出 PDF'}
+              </button>
+              <button
+                type="button"
                 onClick={handlePrintReport}
                 className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
               >
-                打印 / PDF
+                打印
               </button>
             </div>
           </div>
+          {pdfMsg && <p className="mb-3 break-all text-xs text-gray-500">{pdfMsg}</p>}
           {currentPresentation && <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-gray-200 bg-gray-200 sm:grid-cols-4">
             {[
               ['报告章节', `${currentPresentation.sections} 个`, '按标题组织'],

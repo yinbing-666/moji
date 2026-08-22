@@ -6,12 +6,14 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { takeScreenshot } from '../utils/screenshot'
+import { recordDiagnostic } from '../utils/diagnostics'
 
 const DEFAULT_INTERVAL_SECONDS = 300
 
 export interface ScreenshotCaptureResult {
   imageBase64: string
   windows?: unknown[]
+  activeDurationSeconds?: number
 }
 
 export interface UseScreenshotOptions {
@@ -86,6 +88,7 @@ export function useScreenshot(options: UseScreenshotOptions = {}): UseScreenshot
     } catch (unknownError) {
       const message =
         unknownError instanceof Error ? unknownError.message : String(unknownError)
+      recordDiagnostic('window-capture', unknownError)
       setError(message)
       callbacksRef.current.onError?.(message)
       return null
