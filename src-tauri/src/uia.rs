@@ -30,12 +30,14 @@ use windows::Win32::UI::WindowsAndMessaging::{GetWindowTextLengthW, GetWindowTex
 static UIA_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(target_os = "windows")]
-struct ComApartmentGuard;
+struct ComApartmentGuard(bool);
 
 #[cfg(target_os = "windows")]
 impl Drop for ComApartmentGuard {
     fn drop(&mut self) {
-        unsafe { windows::Win32::System::Com::CoUninitialize() };
+        if self.0 {
+            unsafe { windows::Win32::System::Com::CoUninitialize() };
+        }
     }
 }
 
@@ -155,9 +157,12 @@ fn collect_window_text(hwnd: HWND, max_chars: usize) -> Result<CollectedText, St
         .map_err(|_| "UI Automation 全局锁失效".to_string())?;
 
     // 初始化 COM（UIA 需要），并在当前线程离开采集函数时配对释放。
-    unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }
-        .map_err(|e| format!("初始化 COM apartment 失败: {e}"))?;
-    let _com_guard = ComApartmentGuard;
+    let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    // S_OK/S_FALSE 都表示引用计数增加，需要配对释放；RPC_E_CHANGED_MODE 表示线程已是 MTA，无需释放。
+    if hr != windows::Win32::Foundation::RPC_E_CHANGED_MODE && hr.is_err() {
+        return Err(format!("初始化 COM apartment 失败: {hr:?}"));
+    }
+    let _com_guard = ComApartmentGuard(hr.is_ok());
 
     let automation: IUIAutomation =
         unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) }
