@@ -1,7 +1,14 @@
 @import 'tailwindcss';
 
-/* P0优化: 品牌色变量 - emerald → teal */
-@theme {
+/* Tailwind v4 的 dark: 默认绑定 prefers-color-scheme，这里改绑 .dark 类，
+   使设置页的「强制深色」在系统为浅色时同样生效（App.tsx 在 html 上切 .dark）。*/
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* static：Tailwind v4 默认只输出被 utility 引用的变量，
+   而分类色是在 categoryStyles.ts 里以 var() 字符串消费的，不会被扫描到，
+   必须 static 强制输出，否则浅色下分类色全部失效。*/
+@theme static {
+  /* 品牌色 - teal */
   --color-brand-50: #f0fdfa;
   --color-brand-100: #ccfbf1;
   --color-brand-200: #99f6e4;
@@ -13,10 +20,70 @@
   --color-brand-800: #115e59;
   --color-brand-900: #134e4a;
 
-  /* 卡片/弹窗表面色（bg-surface 等 32 处引用） */
+  /* 表面层级：canvas 最暗（页面底），raised 最亮（弹窗/浮层） */
+  --color-canvas: #f2f4f4;
   --color-surface: #ffffff;
+  --color-sunken: #f6f7f7;
+  --color-raised: #ffffff;
 
-  /* P1优化: 字号层级系统 - 替代原来的text-sm/text-base单一体系 */
+  /* 分割线：line 用于分组/卡片，line-strong 用于表单控件边框 */
+  --color-line: #e7e9e9;
+  --color-line-soft: #eff1f1;
+  --color-line-strong: #d5d9d9;
+
+  /* 文字层级 */
+  --color-ink: #16191b;
+  --color-ink-muted: #6b7280;
+  --color-ink-faint: #9ca3af;
+
+  /* 强调色：只用于主按钮、选中态、关键数值。
+     accent 是填充色，accent-ink 是表面上的文字色，拆开是为了两个主题下对比度都达标。*/
+  --color-accent: #0d9488;
+  --color-accent-hover: #0f766e;
+  --color-accent-ink: #0f766e;
+  --color-accent-soft: #eaf7f4;
+  --color-on-accent: #ffffff;
+
+  /* 反色按钮（原 bg-gray-900），深色下需整体翻转 */
+  --color-inverse: #16191b;
+  --color-inverse-hover: #292d30;
+  --color-on-inverse: #f8f9f9;
+
+  /* 状态色：danger/warn/ok。soft 作底，ink 作表面上的文字 */
+  --color-danger: #dc2626;
+  --color-danger-ink: #b91c1c;
+  --color-danger-soft: #fef2f2;
+  --color-danger-line: #fecaca;
+
+  --color-warn: #d97706;
+  --color-warn-ink: #a16207;
+  --color-warn-soft: #fffbeb;
+  --color-warn-line: #fde68a;
+
+  --color-ok: #059669;
+  --color-ok-ink: #047857;
+
+  --color-info: #0284c7;
+  --color-info-ink: #0369a1;
+  --color-info-soft: #eff8fd;
+  --color-info-line: #cfe8f7;
+
+  /* 弹窗遮罩 */
+  --color-scrim: rgb(15 18 20 / 0.45);
+
+  /* 分类色：色相固定，深色下取同色相 400 级提亮 */
+  --color-cat-dev: #6366f1;
+  --color-cat-meeting: #ea580c;
+  --color-cat-doc: #0284c7;
+  --color-cat-communication: #ec4899;
+  --color-cat-other: #71717a;
+  --color-cat-unclassified: #d97706;
+
+  /* 文本选区 */
+  --color-selection: #b6f0e5;
+  --color-selection-ink: #103f39;
+
+  /* 字号层级 */
   --text-h1: 1.875rem;    /* 30px - 页面主标题 */
   --text-h2: 1.5rem;      /* 24px - 区块标题 */
   --text-h3: 1.25rem;     /* 20px - 子标题 */
@@ -25,16 +92,82 @@
   --text-xs: 0.75rem;     /* 12px - 标签/注释 */
   --text-2xs: 0.6875rem;  /* 11px - 极小标注 */
 
-  /* P1优化: 圆角层级系统 */
+  /* 圆角层级 */
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-2xl: 20px;
 
-  /* P1优化: 阴影层级系统（删除原shadow-soft） */
+  /* 阴影层级 */
   --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
   --shadow-elevated: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.03);
+}
+
+/* 深色主题：唯一入口。
+   无 @layer 的规则优先级高于 @theme 输出的 @layer theme{:root}，因此这里能稳定覆盖。
+   所有深色适配都收在这一个块里，组件侧不写任何 dark: 变体。*/
+.dark {
+  --color-canvas: #0f1214;
+  --color-surface: #15181a;
+  --color-sunken: #1c2023;
+  --color-raised: #23282b;
+
+  --color-line: #2b3033;
+  --color-line-soft: #232729;
+  --color-line-strong: #3a4145;
+
+  --color-ink: #e9ebeb;
+  --color-ink-muted: #9aa1a4;
+  --color-ink-faint: #6f7679;
+
+  /* accent 同时是填充色和 border-accent／focus ring 的取值（边框用法约 30 处，多于填充）。
+     压暗填充虽让白字更容易达标，但边框在 #15181a 上只剩 3.3:1，指示性不足。
+     故深色取亮青填充 + 深墨字：字 9.6:1，边框对表面同为 9.6:1。
+     hover 按「亮色变暗、深色变亮＝更突出」的对称规则上调。*/
+  --color-accent: #2dd4bf;
+  --color-accent-hover: #5eead4;
+  --color-accent-ink: #2dd4bf;
+  --color-accent-soft: #16302d;
+  --color-on-accent: #15181a;
+
+  --color-inverse: #e9ebeb;
+  --color-inverse-hover: #cdd1d1;
+  --color-on-inverse: #15181a;
+
+  --color-danger: #b91c1c;
+  --color-danger-ink: #fca5a5;
+  --color-danger-soft: #2c1b1b;
+  --color-danger-line: #4a2626;
+
+  --color-warn: #a16207;
+  --color-warn-ink: #fcd34d;
+  --color-warn-soft: #2b2216;
+  --color-warn-line: #4a3a1c;
+
+  --color-ok: #047857;
+  --color-ok-ink: #6ee7b7;
+
+  --color-info: #0284c7;
+  --color-info-ink: #7dd3fc;
+  --color-info-soft: #16242e;
+  --color-info-line: #274252;
+
+  --color-scrim: rgb(0 0 0 / 0.6);
+
+  --color-cat-dev: #818cf8;
+  --color-cat-meeting: #fb923c;
+  --color-cat-doc: #38bdf8;
+  --color-cat-communication: #f472b6;
+  --color-cat-other: #a1a1aa;
+  --color-cat-unclassified: #fbbf24;
+
+  --color-selection: #1f4f48;
+  --color-selection-ink: #d7f5ef;
+
+  /* 深色下柔和阴影不可见，改用更深的黑；层级主要靠 surface→raised 的明度台阶 */
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-elevated: 0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.35);
 }
 
 /* 全局基础样式 */
@@ -48,24 +181,22 @@ html {
 
 body {
   margin: 0;
-  background-color: #fafafa;
-  color: #111827;
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
 }
 
 /* 品牌色文本选区，弱化默认浏览器蓝 */
 ::selection {
-  background-color: #99f6e4;
-  color: #134e4a;
+  background-color: var(--color-selection);
+  color: var(--color-selection-ink);
 }
 
 /* 键盘导航焦点环（仅 focus-visible，不打扰鼠标点击） */
 :focus-visible {
-  outline: 2px solid rgb(20 184 166 / 0.55);
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 60%, transparent);
   outline-offset: 2px;
 }
 
-/* P0优化: 删除animate-rise-in和animate-breathe动画 */
-/* 原代码有4个自定义动画，现在只保留必要的fade-in */
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -73,6 +204,16 @@ body {
 
 .animate-fade-in {
   animation: fade-in 200ms ease-out both;
+}
+
+/* 采集状态点：常驻运行时用极弱的呼吸表示「还在跑」，不做强动效 */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
 }
 
 /* 滚动条美化 - 保持低调不抢眼 */
@@ -83,6 +224,6 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(156,163,175,0.35);
+  background-color: color-mix(in srgb, var(--color-ink-faint) 45%, transparent);
   border-radius: 9999px;
 }

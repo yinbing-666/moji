@@ -90,15 +90,15 @@ export function WeeklyPlanComparison({ activities }: { activities: Activity[] })
   }
 
   return (
-    <section className="mb-6 border-y border-gray-200 py-5">
+    <section className="mb-6 rounded-xl border border-line bg-surface p-5 shadow-card">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-h3 font-semibold text-gray-900">本周计划与实际</h2>
-          <p className="mt-1 text-xs text-gray-500">{weekStart} 开始 · 实际 {formatDuration(actualSeconds) || '0 分钟'} / 计划 {formatDuration(plannedSeconds) || '未设置'}</p>
+          <h2 className="text-h3 font-semibold text-ink">本周计划与实际</h2>
+          <p className="mt-1 text-xs text-ink-muted">{weekStart} 开始 · 实际 {formatDuration(actualSeconds) || '0 分钟'} / 计划 {formatDuration(plannedSeconds) || '未设置'}</p>
         </div>
         <div className="text-right">
-          <p className="text-2xl font-semibold text-gray-900">{plannedSeconds > 0 ? `${overallPercent}%` : '—'}</p>
-          <p className="text-xs text-gray-500">总体完成度</p>
+          <p className="text-h2 font-bold tabular-nums text-accent-ink">{plannedSeconds > 0 ? `${overallPercent}%` : '—'}</p>
+          <p className="mt-1 text-xs text-ink-muted">总体完成度</p>
         </div>
       </div>
 
@@ -110,11 +110,11 @@ export function WeeklyPlanComparison({ activities }: { activities: Activity[] })
           const percent = planned > 0 ? Math.min(100, Math.round(seconds / (planned * 60) * 100)) : 0
           return (
             <div key={category} className="grid items-center gap-2 sm:grid-cols-[7rem_minmax(0,1fr)_7rem]">
-              <span className="text-sm font-medium text-gray-700">{visual.label}</span>
-              <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-                <div className={`h-full ${visual.dot}`} style={{ width: `${percent}%` }} />
+              <span className="text-sm font-medium text-ink-muted">{visual.label}</span>
+              <div className="h-2 overflow-hidden rounded-full bg-sunken">
+                <div className="h-full" style={{ width: `${percent}%`, backgroundColor: visual.color }} />
               </div>
-              <label className="flex items-center justify-end gap-1 text-xs text-gray-500">
+              <label className="flex items-center justify-end gap-1 text-xs text-ink-muted">
                 <input
                   type="number"
                   min="0"
@@ -126,7 +126,7 @@ export function WeeklyPlanComparison({ activities }: { activities: Activity[] })
                     [category]: Math.max(0, Number(event.target.value) || 0),
                   }))}
                   aria-label={`${visual.label}计划分钟`}
-                  className="w-16 rounded-md border border-gray-300 bg-white px-2 py-1 text-right text-xs text-gray-900 focus:border-brand-500 focus:outline-none"
+                  className="w-16 rounded-md border border-line-strong bg-surface px-2 py-1 text-right text-xs text-ink focus:border-accent focus:outline-none"
                 />
                 分钟
               </label>
@@ -136,7 +136,7 @@ export function WeeklyPlanComparison({ activities }: { activities: Activity[] })
       </div>
 
       <div className="mt-4 flex justify-end">
-        <button type="button" onClick={save} className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:border-brand-500 hover:text-brand-700">
+        <button type="button" onClick={save} className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm font-medium text-ink-muted hover:border-accent hover:text-accent-ink">
           {saved ? '已保存' : '保存本周计划'}
         </button>
       </div>

@@ -64,24 +64,24 @@ export function UnclassifiedInbox({ activities }: { activities: Activity[] }) {
   }
 
   return (
-    <section className="mb-4 border-y border-amber-200 bg-amber-50/50 px-4 py-3">
+    <section className="mb-4 border-y border-warn-line bg-warn-soft px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-gray-900">未分类收件箱</h2>
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">{totalActivities} 条</span>
+            <h2 className="text-sm font-semibold text-ink">未分类收件箱</h2>
+            <span className="rounded-full bg-warn-soft px-2 py-0.5 text-xs font-medium text-warn-ink">{totalActivities} 条</span>
           </div>
-          <p className="mt-1 text-xs text-gray-600">
+          <p className="mt-1 text-xs text-ink-muted">
             {groups.length} 组未命中规则的活动{totalSeconds > 0 ? `，共 ${formatDuration(totalSeconds)}` : ''}。优先处理耗时最长的项目。
           </p>
         </div>
-        <button type="button" onClick={() => setOpen(value => !value)} className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-50">
+        <button type="button" onClick={() => setOpen(value => !value)} className="rounded-md border border-warn-line bg-surface px-3 py-1.5 text-xs font-medium text-warn-ink hover:bg-warn-soft">
           {open ? '收起' : '开始整理'}
         </button>
       </div>
 
       {open && (
-        <div className="mt-3 divide-y divide-amber-200 border-t border-amber-200">
+        <div className="mt-3 divide-y divide-warn-line border-t border-warn-line">
           {groups.slice(0, 30).map(group => {
             const category = categories[group.key] ?? 'other'
             const suggestion = suggestedKeywords(group)
@@ -89,32 +89,32 @@ export function UnclassifiedInbox({ activities }: { activities: Activity[] }) {
               <div key={group.key} className="grid gap-2 py-3 lg:grid-cols-[minmax(0,1fr)_130px_auto] lg:items-center">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="truncate text-sm font-medium text-gray-800">{group.app}</span>
-                    <span className="text-xs tabular-nums text-gray-500">{group.activities.length} 条{group.seconds > 0 ? ` · ${formatDuration(group.seconds)}` : ''}</span>
+                    <span className="truncate text-sm font-medium text-ink">{group.app}</span>
+                    <span className="text-xs tabular-nums text-ink-muted">{group.activities.length} 条{group.seconds > 0 ? ` · ${formatDuration(group.seconds)}` : ''}</span>
                   </div>
-                  <p className="mt-0.5 truncate text-xs text-gray-500" title={group.title}>{group.title || '无窗口标题'}</p>
-                  <p className="mt-1 text-[11px] text-amber-700">记住后：{suggestion.label}</p>
+                  <p className="mt-0.5 truncate text-xs text-ink-muted" title={group.title}>{group.title || '无窗口标题'}</p>
+                  <p className="mt-1 text-[11px] text-warn-ink">记住后：{suggestion.label}</p>
                 </div>
                 <select
                   value={category}
                   onChange={event => setCategories(current => ({ ...current, [group.key]: event.target.value as RuleCategory }))}
                   aria-label={`为 ${group.app} 选择分类`}
-                  className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                  className="rounded-md border border-line-strong bg-surface px-2.5 py-1.5 text-sm text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
                 >
                   {RULE_CATEGORIES.map(item => <option key={item} value={item}>{categoryVisual(item).label}</option>)}
                 </select>
                 <div className="flex items-center gap-2 lg:justify-end">
-                  <button type="button" onClick={() => classify(group, false)} className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-400">
+                  <button type="button" onClick={() => classify(group, false)} className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted hover:border-line-strong">
                     仅归类
                   </button>
-                  <button type="button" onClick={() => classify(group, true)} className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700">
+                  <button type="button" onClick={() => classify(group, true)} className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-on-accent hover:bg-accent-hover">
                     归类并记住
                   </button>
                 </div>
               </div>
             )
           })}
-          {groups.length > 30 && <p className="py-3 text-center text-xs text-gray-500">先显示耗时最高的 30 组，处理后会继续显示其余项目。</p>}
+          {groups.length > 30 && <p className="py-3 text-center text-xs text-ink-muted">先显示耗时最高的 30 组，处理后会继续显示其余项目。</p>}
         </div>
       )}
     </section>

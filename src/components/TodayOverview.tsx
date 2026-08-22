@@ -83,116 +83,118 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
   const topCatVisual = categoryVisual(stats.topCat)
   const totalDurationText = formatDuration(stats.totalSeconds)
 
-  /* 统计卡：今日总时长为主指标（深色英雄卡），应用/类型为次级 */
+  /* 统计卡：三张同一容器，层级只由数值字号与颜色承载；强调色仅给主指标数值本身 */
   return (
     <>
       <section className="mb-6 grid gap-3 sm:grid-cols-3">
-        {/* 今日总时长 - 品牌色主指标卡（页面唯一强色，克制而聚焦） */}
-        <div className="rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50/70 to-white p-5 shadow-card">
-          <div className="flex items-center justify-between">
+        {/* 今日总时长 - 主指标，页面唯一的强调色数值 */}
+        <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
-              <svg className="h-3.5 w-3.5 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="h-3.5 w-3.5 text-ink-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-xs font-medium text-brand-700">今日投入</p>
+              <p className="text-xs font-medium text-ink-muted">今日投入</p>
             </div>
-            <span className="rounded-full bg-white px-2 py-0.5 text-2xs tabular-nums text-gray-500 ring-1 ring-brand-100">{stats.todayCount} 条记录</span>
+            <span className="shrink-0 rounded-full bg-sunken px-2 py-0.5 text-2xs tabular-nums text-ink-muted">{stats.todayCount} 条记录</span>
           </div>
-          <p className="mt-2 text-h2 font-bold tabular-nums text-brand-700">
+          <p className="mt-2 text-h2 font-bold tabular-nums text-accent-ink">
             {totalDurationText ?? '—'}
-            {!totalDurationText && <span className="ml-1 text-sm font-normal text-gray-400">暂无时长数据</span>}
+            {!totalDurationText && <span className="ml-1 text-sm font-normal text-ink-faint">暂无时长数据</span>}
           </p>
-          <p className="mt-1 text-xs text-gray-400">
-            较昨日 <span className="text-gray-600">{stats.yesterdayCount}</span> 条
+          <p className="mt-1 text-xs text-ink-faint">
+            较昨日 <span className="text-ink-muted">{stats.yesterdayCount}</span> 条
           </p>
         </div>
 
-        {/* 主要应用 - 使用标准卡片（层级2） */}
-        <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card transition-shadow hover:shadow-elevated">
+        {/* 主要应用 - 次级指标 */}
+        <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
           <div className="flex items-center gap-1.5">
-            <svg className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="h-3.5 w-3.5 text-ink-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V9m4 8V5m4 12v-6M4 21h16a1 1 0 001-1V4a1 1 0 00-1-1H4a1 1 0 00-1 1v16a1 1 0 001 1z" />
             </svg>
-            <p className="text-xs font-medium text-gray-500">主要应用</p>
+            <p className="text-xs font-medium text-ink-muted">主要应用</p>
           </div>
-          <p className="mt-1.5 truncate text-lg font-semibold text-gray-900">{stats.topApp || '-'}</p>
-          <p className="mt-1 text-xs text-gray-400">{stats.topAppCount} 条记录</p>
+          <p className="mt-2 truncate text-h3 font-semibold text-ink">{stats.topApp || '—'}</p>
+          <p className="mt-1 text-xs text-ink-faint">{stats.topAppCount} 条记录</p>
         </div>
 
-        {/* 主要类型 - 带分类色标识 */}
-        <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card transition-shadow hover:shadow-elevated">
+        {/* 主要类型 - 次级指标，分类身份用圆点表达 */}
+        <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
           <div className="flex items-center gap-1.5">
-            <svg className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="h-3.5 w-3.5 text-ink-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
             </svg>
-            <p className="text-xs font-medium text-gray-500">主要类型</p>
+            <p className="text-xs font-medium text-ink-muted">主要类型</p>
           </div>
-          <div className="mt-1.5 flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: topCatVisual.hex }} />
-            <p className="truncate text-lg font-semibold text-gray-900">{topCatVisual.label}</p>
+          <div className="mt-2 flex items-center gap-2">
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: topCatVisual.color }} />
+            <p className="truncate text-h3 font-semibold text-ink">{topCatVisual.label}</p>
           </div>
-          <p className="mt-1 text-xs text-gray-400">{stats.topCatCount} 条记录</p>
+          <p className="mt-1 text-xs text-ink-faint">{stats.topCatCount} 条记录</p>
         </div>
       </section>
 
-      {/* P1优化: 时间轴容器 - 使用轻量样式（层级3） */}
-      <section className="mb-6 rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
+      {/* 今日时间轴：24 小时活动密度 */}
+      <section className="mb-6 rounded-xl border border-line bg-surface p-5 shadow-card">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-h3 font-semibold text-gray-900">今日时间轴</h2>
-          <span className="text-xs text-gray-400">共 {todayActivities.length} 条记录</span>
+          <h2 className="text-h3 font-semibold text-ink">今日时间轴</h2>
+          <span className="text-xs text-ink-faint">共 {todayActivities.length} 条记录</span>
         </div>
 
-        {/* P1优化: 时间轴柱状图 - 对数缩放,小柱子也可辨;容器防溢出 */}
-        <div className="flex items-end gap-0.5 h-16 overflow-hidden">
-          {hourlyBuckets.counts.map((count, i) => {
-            const hasActivity = count > 0
-            const dominantCat = hourlyBuckets.dominant[i]
-            const visual = dominantCat ? categoryVisual(dominantCat) : null
-            const maxCount = Math.max(...hourlyBuckets.counts, 1)
-            // 对数缩放:log(count+1)/log(max+1),让 1 条也有 ~15% 高度,极值不被压扁
-            const ratio = Math.log(count + 1) / Math.log(maxCount + 1)
-            return (
-              <div
-                key={i}
-                title={`${i.toString().padStart(2, '0')}:00 — ${count}条`}
-                className={`flex-1 min-w-[6px] rounded-t transition-opacity ${
-                  hasActivity 
-                    ? 'opacity-100 hover:opacity-75' 
-                    : 'opacity-20 bg-gray-100'
-                }`}
-                style={{
-                  height: `${Math.max(ratio * 100, count > 0 ? 8 : 0)}%`,
-                  backgroundColor: visual?.hex || undefined,
-                }}
-              />
-            )
-          })}
-        </div>
+        {todayActivities.length === 0 ? (
+          <p className="py-6 text-center text-sm text-ink-faint">今天还没有记录，采集开启后这里会按小时显示活动密度</p>
+        ) : (
+          <>
+            {/* 柱状图 - 对数缩放,小柱子也可辨;底部基线让稀疏数据仍读作坐标轴而非空白。
+                基线取 ink-faint/70：border-line 在两个主题下都只有 1.2–1.4:1，实测不可见 */}
+            <div className="flex h-16 items-end gap-0.5 overflow-hidden border-b border-ink-faint/70">
+              {hourlyBuckets.counts.map((count, i) => {
+                const dominantCat = hourlyBuckets.dominant[i]
+                const visual = dominantCat ? categoryVisual(dominantCat) : null
+                const maxCount = Math.max(...hourlyBuckets.counts, 1)
+                // 对数缩放:log(count+1)/log(max+1),让 1 条也有 ~15% 高度,极值不被压扁
+                const ratio = Math.log(count + 1) / Math.log(maxCount + 1)
+                return (
+                  <div
+                    key={i}
+                    title={`${i.toString().padStart(2, '0')}:00 — ${count}条`}
+                    className="min-w-[6px] flex-1 rounded-t transition-opacity hover:opacity-75"
+                    style={{
+                      height: count > 0 ? `${Math.max(ratio * 100, 8)}%` : 0,
+                      backgroundColor: visual?.color || undefined,
+                    }}
+                  />
+                )
+              })}
+            </div>
 
-        {/* 时间标签 - 5 个刻度均分,避免窄容器挤压溢出 */}
-        <div className="mt-2 flex justify-between text-[10px] tabular-nums text-gray-400">
-          <span className="whitespace-nowrap">00:00</span>
-          <span className="whitespace-nowrap">06:00</span>
-          <span className="whitespace-nowrap">12:00</span>
-          <span className="whitespace-nowrap">18:00</span>
-          <span className="whitespace-nowrap">24:00</span>
-        </div>
+            {/* 时间标签 - 5 个刻度均分,避免窄容器挤压溢出 */}
+            <div className="mt-2 flex justify-between text-[10px] tabular-nums text-ink-faint">
+              <span className="whitespace-nowrap">00:00</span>
+              <span className="whitespace-nowrap">06:00</span>
+              <span className="whitespace-nowrap">12:00</span>
+              <span className="whitespace-nowrap">18:00</span>
+              <span className="whitespace-nowrap">24:00</span>
+            </div>
+          </>
+        )}
       </section>
 
-      {/* P1优化: 分类分布 - 使用左侧色条强调（差异化设计） */}
+      {/* 分类分布 */}
       {categoryDistribution.length > 0 && (
-        <section className="mb-6 border-l-4 border-l-brand-500 bg-white rounded-r-xl p-4 shadow-card">
-          <h2 className="text-h3 font-semibold text-gray-900 mb-3">分类分布</h2>
+        <section className="mb-6 rounded-xl border border-line bg-surface p-5 shadow-card">
+          <h2 className="mb-3 text-h3 font-semibold text-ink">分类分布</h2>
           
           {/* 分布条 */}
-          <div className="mb-3 h-2 w-full overflow-hidden rounded-full bg-gray-100 flex">
+          <div className="mb-3 h-2 w-full overflow-hidden rounded-full bg-sunken flex">
             {categoryDistribution.map(([cat, count]) => {
               const visual = categoryVisual(cat)
               const pct = Math.round((count / todayActivities.length) * 100)
               return (
                 <div
                   key={cat}
-                  style={{ width: `${pct}%`, backgroundColor: visual.hex }}
+                  style={{ width: `${pct}%`, backgroundColor: visual.color }}
                   className="first:rounded-l-full last:rounded-r-full"
                   title={`${visual.label}: ${count} (${pct}%)`}
                 />
@@ -200,21 +202,17 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
             })}
           </div>
 
-          {/* 图例 - 使用新的莫兰迪色系 */}
+          {/* 图例 - 分类色 + 占比，纯展示 */}
           <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
             {categoryDistribution.map(([cat, count]) => {
               const visual = categoryVisual(cat)
               const pct = Math.round((count / todayActivities.length) * 100)
               return (
-                <button
-                  key={cat}
-                  type="button"
-                  className="inline-flex items-center gap-1.5 hover:opacity-70 transition-opacity"
-                >
-                  <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: visual.hex }} />
-                  <span className="text-gray-700">{visual.label}</span>
-                  <span className="tabular-nums text-gray-400">{count} · {pct}%</span>
-                </button>
+                <span key={cat} className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: visual.color }} />
+                  <span className="text-ink-muted">{visual.label}</span>
+                  <span className="tabular-nums text-ink-faint">{count} · {pct}%</span>
+                </span>
               )
             })}
           </div>

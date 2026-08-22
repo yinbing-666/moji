@@ -7,41 +7,45 @@ interface SkinColors {
   sidebar: string
 }
 
+/**
+ * 画布与侧栏配色。约束：canvas 必须比 --color-surface 更暗（深色）或更深（浅色），
+ * 否则卡片浮不起来。plain / graphite 走中性墨色，mint / sky 保留刻意的色相偏移。
+ */
 const SKINS: Record<ResolvedTheme, Record<Exclude<BackgroundPreset, 'custom'>, SkinColors>> = {
   light: {
     plain: {
-      canvas: 'linear-gradient(180deg, #f4f7f6 0%, #f1f4f3 100%)',
-      sidebar: 'rgb(238 243 241 / 0.96)',
+      canvas: 'linear-gradient(180deg, #f4f6f6 0%, #eef1f1 100%)',
+      sidebar: 'rgb(239 242 242 / 0.96)',
     },
     mint: {
-      canvas: 'linear-gradient(135deg, #edf8f4 0%, #f5f8f6 55%, #eef3f1 100%)',
-      sidebar: 'rgb(229 242 237 / 0.94)',
+      canvas: 'linear-gradient(135deg, #eef6f3 0%, #f3f6f5 55%, #ecf1ef 100%)',
+      sidebar: 'rgb(233 243 239 / 0.94)',
     },
     sky: {
-      canvas: 'linear-gradient(135deg, #eef5f7 0%, #f6f8f8 55%, #edf2f3 100%)',
-      sidebar: 'rgb(230 239 242 / 0.94)',
+      canvas: 'linear-gradient(135deg, #eef3f6 0%, #f3f6f7 55%, #ecf0f2 100%)',
+      sidebar: 'rgb(233 240 244 / 0.94)',
     },
     graphite: {
-      canvas: 'linear-gradient(135deg, #eef1f1 0%, #f6f7f7 55%, #e9edec 100%)',
-      sidebar: 'rgb(228 233 232 / 0.95)',
+      canvas: 'linear-gradient(135deg, #eff1f1 0%, #f4f5f5 55%, #e8ebeb 100%)',
+      sidebar: 'rgb(232 235 235 / 0.95)',
     },
   },
   dark: {
     plain: {
-      canvas: 'linear-gradient(180deg, #0e1211 0%, #0b0e0d 100%)',
-      sidebar: 'rgb(15 20 18 / 0.96)',
+      canvas: 'linear-gradient(180deg, #101315 0%, #0c0f10 100%)',
+      sidebar: 'rgb(18 21 23 / 0.96)',
     },
     mint: {
-      canvas: 'linear-gradient(135deg, #10201c 0%, #101715 52%, #0b0f0e 100%)',
-      sidebar: 'rgb(17 31 27 / 0.94)',
+      canvas: 'linear-gradient(135deg, #101917 0%, #0f1414 52%, #0b0f0f 100%)',
+      sidebar: 'rgb(17 26 24 / 0.94)',
     },
     sky: {
-      canvas: 'linear-gradient(135deg, #111c20 0%, #111719 52%, #0c1011 100%)',
-      sidebar: 'rgb(18 28 31 / 0.94)',
+      canvas: 'linear-gradient(135deg, #101619 0%, #0f1315 52%, #0b0e10 100%)',
+      sidebar: 'rgb(17 24 27 / 0.94)',
     },
     graphite: {
-      canvas: 'linear-gradient(135deg, #171a19 0%, #111413 52%, #0c0e0d 100%)',
-      sidebar: 'rgb(24 28 26 / 0.94)',
+      canvas: 'linear-gradient(135deg, #131617 0%, #0f1112 52%, #0c0e0f 100%)',
+      sidebar: 'rgb(21 24 25 / 0.94)',
     },
   },
 }
@@ -96,11 +100,11 @@ export function getAppearanceSkin(
 
   if (safeBackgroundUrl) {
     const overlay = theme === 'dark'
-      ? 'linear-gradient(rgb(9 13 12 / 0.7), rgb(9 13 12 / 0.7))'
-      : 'linear-gradient(rgb(244 248 247 / 0.34), rgb(244 248 247 / 0.34))'
+      ? 'linear-gradient(rgb(10 13 14 / 0.72), rgb(10 13 14 / 0.72))'
+      : 'linear-gradient(rgb(244 246 246 / 0.36), rgb(244 246 246 / 0.36))'
     return {
       canvas: `${overlay}, url("${safeBackgroundUrl}") center / cover fixed`,
-      sidebar: theme === 'dark' ? 'rgb(14 20 18 / 0.88)' : 'rgb(239 245 243 / 0.88)',
+      sidebar: theme === 'dark' ? 'rgb(16 19 21 / 0.88)' : 'rgb(240 243 243 / 0.88)',
     }
   }
 
@@ -114,8 +118,8 @@ export function getAppearancePreview(
 ): string {
   if (preset === 'custom' && !customBackground) {
     return theme === 'dark'
-      ? 'repeating-conic-gradient(#242a27 0% 25%, #171c1a 0% 50%) 50% / 10px 10px'
-      : 'repeating-conic-gradient(#e7ecea 0% 25%, #f8faf9 0% 50%) 50% / 10px 10px'
+      ? 'repeating-conic-gradient(#23282b 0% 25%, #15181a 0% 50%) 50% / 10px 10px'
+      : 'repeating-conic-gradient(#e7e9e9 0% 25%, #f8f9f9 0% 50%) 50% / 10px 10px'
   }
   return getAppearanceSkin(theme, preset, customBackground).canvas
 }

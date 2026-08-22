@@ -300,31 +300,31 @@ export function ReportView({ activities }: ReportViewProps) {
   /* P1优化: 报告页面布局 - 使用层级化卡片系统 */
   return (
     <div className="report-print-root space-y-6">
-      <nav className="report-no-print flex border-b border-gray-200" aria-label="报告类型">
-        <button type="button" onClick={() => setActiveTab('daily')} className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'daily' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>工作日报</button>
-        <button type="button" onClick={() => setActiveTab('efficiency')} className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'efficiency' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>效率分析</button>
+      <nav className="report-no-print flex border-b border-line" aria-label="报告类型">
+        <button type="button" onClick={() => setActiveTab('daily')} className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'daily' ? 'border-accent text-accent-ink' : 'border-transparent text-ink-muted hover:text-ink'}`}>工作日报</button>
+        <button type="button" onClick={() => setActiveTab('efficiency')} className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'efficiency' ? 'border-accent text-accent-ink' : 'border-transparent text-ink-muted hover:text-ink'}`}>效率分析</button>
       </nav>
 
       {activeTab === 'efficiency' ? (
-        <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+        <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
           <AwAnalytics activities={activities} />
         </section>
       ) : (<>
-      {/* 报告控制栏 - 层级2：标准卡片 */}
-      <section className="report-no-print rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
+      {/* 报告控制栏 */}
+      <section className="report-no-print rounded-xl border border-line bg-surface p-5 shadow-card">
         {isLocalMode && (
-          <div className="mb-3 rounded-lg border border-teal-200 bg-teal-50/50 px-3 py-2 text-xs text-teal-800">
+          <div className="mb-3 rounded-lg border border-accent bg-accent-soft px-3 py-2 text-xs text-accent-ink">
             当前为无 LLM 模式，报告按固定格式在本地生成，不会调用 API。
           </div>
         )}
         <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="report-type" className="text-xs font-medium text-gray-500">报告周期</label>
+            <label htmlFor="report-type" className="text-xs font-medium text-ink-muted">报告周期</label>
             <select
               id="report-type"
               value={reportType}
               onChange={(e) => setReportType(e.target.value as 'daily' | 'weekly' | 'monthly')}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+              className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
             >
               <option value="daily">日报</option>
               <option value="weekly">周报</option>
@@ -333,23 +333,23 @@ export function ReportView({ activities }: ReportViewProps) {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="report-date" className="text-xs font-medium text-gray-500">选择日期</label>
+            <label htmlFor="report-date" className="text-xs font-medium text-ink-muted">选择日期</label>
             <input
               id="report-date"
               type="date"
               value={reportDate}
               onChange={(e) => setReportDate(e.target.value)}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+              className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
             />
           </div>
 
           <div className="flex min-w-0 flex-col gap-1.5">
-            <label htmlFor="report-template" className="text-xs font-medium text-gray-500">{isLocalMode ? '报告格式' : '报告模板'}</label>
+            <label htmlFor="report-template" className="text-xs font-medium text-ink-muted">{isLocalMode ? '报告格式' : '报告模板'}</label>
             <select
               id="report-template"
               value={effectiveTemplate}
               onChange={(e) => setSelectedTemplate(e.target.value)}
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+              className="w-full rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
             >
               <optgroup label="内置模板">
                 {BUILTIN_TEMPLATES.map(template => (
@@ -372,20 +372,20 @@ export function ReportView({ activities }: ReportViewProps) {
             disabled={isGeneratingReport || !reportData}
             className={`rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
               isGeneratingReport
-                ? 'border border-orange-200 bg-orange-50 text-orange-700'
-                : 'bg-brand-600 text-white hover:bg-brand-700'
+                ? 'border border-warn-line bg-warn-soft text-warn-ink'
+                : 'bg-accent text-on-accent hover:bg-accent-hover'
             }`}
           >
             {isGeneratingReport ? '生成中...' : isLocalMode ? '生成本地报告' : 'AI 生成报告'}
           </button>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
-          <span className="text-xs text-gray-500">当前：{templateLabel(effectiveTemplate)}</span>
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line-soft pt-3">
+          <span className="text-xs text-ink-muted">当前：{templateLabel(effectiveTemplate)}</span>
           {!isLocalMode && <button
             type="button"
             onClick={openNewTemplateEditor}
-            className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+            className="rounded-md border border-line-strong bg-surface px-2.5 py-1 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink"
           >
             新建自定义模板
           </button>}
@@ -394,14 +394,14 @@ export function ReportView({ activities }: ReportViewProps) {
               <button
                 type="button"
                 onClick={openEditTemplateEditor}
-                className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+                className="rounded-md border border-line-strong bg-surface px-2.5 py-1 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink"
               >
                 编辑模板
               </button>
               <button
                 type="button"
                 onClick={handleDeleteSelectedTemplate}
-                className="rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
+                className="rounded-md border border-danger-line bg-surface px-2.5 py-1 text-xs font-medium text-danger-ink transition-colors hover:bg-danger-soft"
               >
                 删除模板
               </button>
@@ -410,43 +410,43 @@ export function ReportView({ activities }: ReportViewProps) {
         </div>
 
         {templateEditorOpen && (
-          <div className="mt-3 border-t border-gray-100 pt-3">
+          <div className="mt-3 border-t border-line-soft pt-3">
             <div className="grid gap-3 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="template-name" className="text-xs font-medium text-gray-500">模板名称</label>
+                <label htmlFor="template-name" className="text-xs font-medium text-ink-muted">模板名称</label>
                 <input
                   id="template-name"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
                   placeholder="例如：周会复盘"
-                  className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                  className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="template-prompt" className="text-xs font-medium text-gray-500">生成要求</label>
+                <label htmlFor="template-prompt" className="text-xs font-medium text-ink-muted">生成要求</label>
                 <textarea
                   id="template-prompt"
                   value={templatePrompt}
                   onChange={(e) => setTemplatePrompt(e.target.value)}
                   placeholder="描述报告重点、结构和语气"
                   rows={3}
-                  className="resize-y rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                  className="resize-y rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
                 />
               </div>
             </div>
-            {templateError && <p className="mt-2 text-xs text-red-600">{templateError}</p>}
+            {templateError && <p className="mt-2 text-xs text-danger-ink">{templateError}</p>}
             <div className="mt-2 flex gap-2">
               <button
                 type="button"
                 onClick={handleSaveTemplate}
-                className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700"
+                className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-on-accent transition-colors hover:bg-accent-hover"
               >
                 保存模板
               </button>
               <button
                 type="button"
                 onClick={closeTemplateEditor}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-sunken"
               >
                 取消
               </button>
@@ -457,14 +457,14 @@ export function ReportView({ activities }: ReportViewProps) {
 
       {/* 报告内容展示：生成后或从历史打开 */}
       {lastReport && (
-        <section ref={reportContentRef} className="overflow-hidden rounded-xl border border-gray-200/60 bg-white shadow-card">
-          <div className="border-b border-gray-100 bg-gray-50/60 px-5 py-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
+        <section ref={reportContentRef} className="overflow-hidden rounded-xl border border-line bg-surface shadow-card">
+          <div className="border-b border-line-soft bg-sunken px-5 py-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-line-soft pb-3">
             <div className="flex items-center gap-2.5">
-              <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
+              <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent-ink ring-1 ring-accent-soft">
                 {REPORT_TYPE_LABEL[lastReport.type] ?? lastReport.type}
               </span>
-              <p className="text-sm font-semibold text-gray-900">
+              <p className="text-sm font-semibold text-ink">
                 生成于 {new Date(lastReport.createdAt).toLocaleString('zh-CN', {
                   month: 'short',
                   day: 'numeric',
@@ -472,10 +472,10 @@ export function ReportView({ activities }: ReportViewProps) {
                   minute: '2-digit',
                 })}
               </p>
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+              <span className="rounded-full bg-sunken px-2 py-0.5 text-[10px] font-medium text-ink-muted">
                 {templateLabel(lastReport.template)}
               </span>
-              <span className="rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-500">
+              <span className="rounded-full bg-sunken px-2 py-0.5 text-[10px] font-medium text-ink-muted">
                 当前为 {isLocalMode ? '固定格式模式' : 'AI 模式'}
               </span>
             </div>
@@ -483,14 +483,14 @@ export function ReportView({ activities }: ReportViewProps) {
               <button
                 type="button"
                 onClick={() => void handleCopyReport()}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+                className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink"
               >
                 {copied ? '已复制' : '复制'}
               </button>
               <button
                 type="button"
                 onClick={handleDownloadReport}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+                className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink"
               >
                 下载 Markdown
               </button>
@@ -498,21 +498,21 @@ export function ReportView({ activities }: ReportViewProps) {
                 type="button"
                 onClick={() => void handleExportPdf()}
                 disabled={pdfBusy}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+                className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink"
               >
                 {pdfBusy ? '导出中…' : '导出 PDF'}
               </button>
               <button
                 type="button"
                 onClick={handlePrintReport}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+                className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink"
               >
                 打印
               </button>
             </div>
           </div>
-          {pdfMsg && <p className="mb-3 break-all text-xs text-gray-500">{pdfMsg}</p>}
-          {currentPresentation && <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-gray-200 bg-gray-200 sm:grid-cols-4">
+          {pdfMsg && <p className="mb-3 break-all text-xs text-ink-muted">{pdfMsg}</p>}
+          {currentPresentation && <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
             {[
               ['报告章节', `${currentPresentation.sections} 个`, '按标题组织'],
               ['行动项', `${currentPresentation.actionItems} 条`, '下一步与待办'],
@@ -520,9 +520,9 @@ export function ReportView({ activities }: ReportViewProps) {
               ['正文长度', `${currentPresentation.characters} 字`, '已保存至本机'],
             ].map(([label, value, note]) => (
               <div key={label} className="bg-surface px-3 py-2.5">
-                <p className="text-[11px] text-gray-500">{label}</p>
-                <p className="mt-1 text-base font-semibold tabular-nums text-gray-900">{value}</p>
-                <p className="mt-0.5 text-[10px] text-gray-400">{note}</p>
+                <p className="text-[11px] text-ink-muted">{label}</p>
+                <p className="mt-1 text-base font-semibold tabular-nums text-ink">{value}</p>
+                <p className="mt-0.5 text-[10px] text-ink-faint">{note}</p>
               </div>
             ))}
           </div>}
@@ -535,20 +535,20 @@ export function ReportView({ activities }: ReportViewProps) {
 
       {/* 报告历史：最近生成的报告可随时回看 */}
       {reportHistory.length > 0 && (
-        <section className="report-no-print rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
+        <section className="report-no-print rounded-xl border border-line bg-surface p-5 shadow-card">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-h3 font-semibold text-gray-900">报告历史</h2>
-            <span className="text-xs text-gray-400">最近 {reportHistory.length} 条</span>
+            <h2 className="text-h3 font-semibold text-ink">报告历史</h2>
+            <span className="text-xs text-ink-faint">最近 {reportHistory.length} 条</span>
           </div>
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-line-soft">
             {reportHistory.map(item => (
               <li
                 key={item.id}
                 className={`group flex items-center gap-3 py-2.5 transition-colors ${
-                  lastReport?.id === item.id ? 'bg-brand-50/30' : 'hover:bg-gray-50/60'
+                  lastReport?.id === item.id ? 'bg-accent-soft' : 'hover:bg-sunken'
                 } -mx-2 rounded-md px-2`}
               >
-                <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                <span className="shrink-0 rounded-full bg-sunken px-2 py-0.5 text-[10px] font-medium text-ink-muted">
                   {REPORT_TYPE_LABEL[item.type] ?? item.type}
                 </span>
                 <button
@@ -557,8 +557,8 @@ export function ReportView({ activities }: ReportViewProps) {
                   className="min-w-0 flex-1 text-left"
                   title="查看这份报告"
                 >
-                  <p className="truncate text-sm text-gray-800">{item.content.split('\n')[0] || '（无内容）'}</p>
-                  <p className="mt-0.5 text-xs text-gray-400">
+                  <p className="truncate text-sm text-ink">{item.content.split('\n')[0] || '（无内容）'}</p>
+                  <p className="mt-0.5 text-xs text-ink-faint">
                     {new Date(item.createdAt).toLocaleString('zh-CN', {
                       month: 'short',
                       day: 'numeric',
@@ -571,7 +571,7 @@ export function ReportView({ activities }: ReportViewProps) {
                 <button
                   type="button"
                   onClick={() => handleDeleteReport(item.id)}
-                  className="shrink-0 rounded-md px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                  className="shrink-0 rounded-md px-2 py-1 text-xs text-ink-faint transition-colors hover:bg-danger-soft hover:text-danger-ink"
                   title="删除这条报告"
                 >
                   删除
@@ -583,38 +583,38 @@ export function ReportView({ activities }: ReportViewProps) {
       )}
 
       {!reportData ? (
-        /* P1优化: 无数据提示 - 使用左侧色条风格 */
-        <section className="border-l-4 border-l-gray-300 bg-white rounded-r-xl p-6 shadow-card text-center">
-          <svg className="mx-auto h-12 w-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+        /* 无数据提示 - 与其余区块同一容器规范 */
+        <section className="rounded-xl border border-line bg-surface p-6 text-center shadow-card">
+          <svg className="mx-auto h-12 w-12 text-ink-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <p className="mt-3 text-sm font-medium text-gray-900">该日期暂无数据</p>
-          <p className="mt-1 text-xs text-gray-400">选择其他日期或开始采集活动数据</p>
+          <p className="mt-3 text-sm font-medium text-ink">该日期暂无数据</p>
+          <p className="mt-1 text-xs text-ink-faint">选择其他日期或开始采集活动数据</p>
         </section>
       ) : (
         <>
-          {/* P1优化: 统计概览 - 层级1：大圆角渐变背景 */}
+          {/* 统计概览：四张同一容器，层级只由数值字号与颜色承载 */}
           <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="rounded-2xl bg-gradient-to-br from-gray-50 to-white p-5 shadow-card">
-              <p className="text-xs font-medium text-gray-500">总活动数</p>
-              <p className="mt-1.5 text-h2 font-bold tabular-nums text-gray-900">{reportData.total}</p>
+            <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
+              <p className="text-xs font-medium text-ink-muted">总活动数</p>
+              <p className="mt-2 text-h2 font-bold tabular-nums text-accent-ink">{reportData.total}</p>
             </div>
-            
-            <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
-              <p className="text-xs font-medium text-gray-500">活跃应用</p>
-              <p className="mt-1.5 text-lg font-semibold tabular-nums text-gray-900">{reportData.apps.length}</p>
+
+            <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
+              <p className="text-xs font-medium text-ink-muted">活跃应用</p>
+              <p className="mt-2 text-h3 font-semibold tabular-nums text-ink">{reportData.apps.length}</p>
             </div>
-            
-            <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
-              <p className="text-xs font-medium text-gray-500">主要类型</p>
-              <div className="mt-1.5 flex items-center gap-2">
+
+            <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
+              <p className="text-xs font-medium text-ink-muted">主要类型</p>
+              <div className="mt-2 flex items-center gap-2">
                 {reportData.categories[0] && (
                   <>
-                    <span 
-                      className="h-2 w-2 rounded-full" 
-                      style={{ backgroundColor: categoryVisual(reportData.categories[0][0]).hex }} 
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: categoryVisual(reportData.categories[0][0]).color }}
                     />
-                    <span className="text-lg font-semibold text-gray-900">
+                    <span className="truncate text-h3 font-semibold text-ink">
                       {categoryVisual(reportData.categories[0][0]).label}
                     </span>
                   </>
@@ -622,38 +622,38 @@ export function ReportView({ activities }: ReportViewProps) {
               </div>
             </div>
 
-            <div className="rounded-xl border border-gray-200/60 bg-white p-4 shadow-card">
-              <p className="text-xs font-medium text-gray-500">报告质量</p>
-              <div className="mt-1.5 flex items-baseline gap-1">
-                <p className="text-lg font-semibold tabular-nums text-gray-900">{reportData.quality.score}</p>
-                <span className="text-xs text-gray-400">/ 100</span>
+            <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
+              <p className="text-xs font-medium text-ink-muted">报告质量</p>
+              <div className="mt-2 flex items-baseline gap-1">
+                <p className="text-h3 font-semibold tabular-nums text-ink">{reportData.quality.score}</p>
+                <span className="text-xs text-ink-faint">/ 100</span>
               </div>
-              <p className="mt-1 text-xs text-gray-500" title={reportData.quality.detail}>{reportData.quality.label}</p>
+              <p className="mt-1 text-xs text-ink-muted" title={reportData.quality.detail}>{reportData.quality.label}</p>
             </div>
           </section>
 
-          {/* P1优化: 应用排行表 - 层级3：轻量容器 */}
-          <section className="rounded-lg bg-white/80 backdrop-blur-sm p-4 border border-gray-100">
-            <h2 className="text-h3 font-semibold text-gray-900 mb-3">应用使用排行</h2>
+          {/* 应用排行表 */}
+          <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
+            <h2 className="text-h3 font-semibold text-ink mb-3">应用使用排行</h2>
             
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="pb-2 text-left text-xs font-medium text-gray-500">#</th>
-                    <th className="pb-2 text-left text-xs font-medium text-gray-500">应用</th>
-                    <th className="pb-2 text-right text-xs font-medium text-gray-500">次数</th>
-                    <th className="pb-2 text-right text-xs font-medium text-gray-500">时长</th>
-                    <th className="pb-2 text-left text-xs font-medium text-gray-500 pl-4">分类</th>
+                  <tr className="border-b border-line">
+                    <th className="pb-2 text-left text-xs font-medium text-ink-muted">#</th>
+                    <th className="pb-2 text-left text-xs font-medium text-ink-muted">应用</th>
+                    <th className="pb-2 text-right text-xs font-medium text-ink-muted">次数</th>
+                    <th className="pb-2 text-right text-xs font-medium text-ink-muted">时长</th>
+                    <th className="pb-2 text-left text-xs font-medium text-ink-muted pl-4">分类</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-line-soft">
                   {reportData.apps.slice(0, 10).map((app, i) => (
-                    <tr key={app.app} className="group hover:bg-gray-50/50 transition-colors">
-                      <td className="py-2.5 tabular-nums text-gray-400">{i + 1}</td>
-                      <td className="py-2.5 font-medium text-gray-900">{app.app}</td>
-                      <td className="py-2.5 text-right tabular-nums text-gray-700">{app.count}</td>
-                      <td className="py-2.5 text-right tabular-nums text-gray-700">{formatDuration(app.duration) ?? '-'}</td>
+                    <tr key={app.app} className="group hover:bg-sunken transition-colors">
+                      <td className="py-2.5 tabular-nums text-ink-faint">{i + 1}</td>
+                      <td className="py-2.5 font-medium text-ink">{app.app}</td>
+                      <td className="py-2.5 text-right tabular-nums text-ink-muted">{app.count}</td>
+                      <td className="py-2.5 text-right tabular-nums text-ink-muted">{formatDuration(app.duration) ?? '-'}</td>
                       <td className="py-2.5 pl-4">
                         <div className="flex flex-wrap gap-1">
                           {app.categories.map(cat => {
@@ -663,8 +663,8 @@ export function ReportView({ activities }: ReportViewProps) {
                                 key={cat}
                                 className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium"
                                 style={{
-                                  backgroundColor: `${visual.hex}15`,
-                                  color: visual.hex,
+                                  backgroundColor: visual.soft,
+                                  color: visual.color,
                                 }}
                               >
                                 {visual.label}
@@ -680,19 +680,19 @@ export function ReportView({ activities }: ReportViewProps) {
             </div>
           </section>
 
-          {/* P1优化: 分类饼图（用条形图替代）- 左侧色条强调 */}
-          <section className="border-l-4 border-l-brand-500 bg-white rounded-r-xl p-4 shadow-card">
-            <h2 className="text-h3 font-semibold text-gray-900 mb-3">分类分布</h2>
+          {/* 分类分布（条形图） */}
+          <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
+            <h2 className="text-h3 font-semibold text-ink mb-3">分类分布</h2>
             
             {/* 分布条 */}
-            <div className="mb-3 h-2.5 w-full overflow-hidden rounded-full bg-gray-100 flex">
+            <div className="mb-3 h-2.5 w-full overflow-hidden rounded-full bg-sunken flex">
               {reportData.categories.map(([cat, count]) => {
                 const visual = categoryVisual(cat)
                 const pct = Math.round((count / reportData.total) * 100)
                 return (
                   <div
                     key={cat}
-                    style={{ width: `${pct}%`, backgroundColor: visual.hex }}
+                    style={{ width: `${pct}%`, backgroundColor: visual.color }}
                     className="first:rounded-l-full last:rounded-r-full transition-all"
                     title={`${visual.label}: ${count} (${pct}%)`}
                   />
@@ -706,21 +706,23 @@ export function ReportView({ activities }: ReportViewProps) {
                 const visual = categoryVisual(cat)
                 const pct = Math.round((count / reportData.total) * 100)
                 return (
-                  <div key={cat} className="flex items-center gap-2 rounded-md bg-gray-50 px-2 py-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: visual.hex }} />
-                    <span className="truncate text-xs text-gray-700">{visual.label}</span>
-                    <span className="ml-auto tabular-nums text-xs text-gray-400">{pct}%</span>
+                  <div key={cat} className="flex items-center gap-2 rounded-md bg-sunken px-2 py-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: visual.color }} />
+                    <span className="truncate text-xs text-ink-muted">{visual.label}</span>
+                    <span className="ml-auto tabular-nums text-xs text-ink-faint">{pct}%</span>
                   </div>
                 )
               })}
             </div>
           </section>
 
-            {/* P1优化: 时间热力图 - 轻量容器 */}
-          <section className="rounded-lg bg-white/80 backdrop-blur-sm p-4 border border-gray-100">
-            <h2 className="text-h3 font-semibold text-gray-900 mb-3">时间分布</h2>
+          {/* 时间热力图 */}
+          <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
+            <h2 className="text-h3 font-semibold text-ink mb-3">时间分布</h2>
 
-            <div className="flex items-end gap-0.5 h-20 overflow-hidden">
+            {/* 基线与仪表盘 24 小时图一致；取 ink-faint/70 而非 border-line：
+                后者在两个主题下都只有 1.2–1.4:1，实测看不见，等于柱子仍然悬空 */}
+            <div className="flex h-20 items-end gap-0.5 overflow-hidden border-b border-ink-faint/70">
               {reportData.hourly.map((count, i) => {
                 const hasActivity = count > 0
                 const dominantCat = reportData.hourlyDominant[i]
@@ -733,18 +735,18 @@ export function ReportView({ activities }: ReportViewProps) {
                     key={i}
                     title={`${i.toString().padStart(2, '0')}:00 — ${count}条`}
                     className={`flex-1 min-w-[6px] rounded-t transition-opacity ${
-                      hasActivity ? 'opacity-100 hover:opacity-75' : 'opacity-20 bg-gray-100'
+                      hasActivity ? 'opacity-100 hover:opacity-75' : 'opacity-20 bg-sunken'
                     }`}
                     style={{
                       height: `${Math.max(ratio * 100, hasActivity ? 3 : 0)}%`,
-                      backgroundColor: dominantCat ? categoryVisual(dominantCat).hex : undefined,
+                      backgroundColor: dominantCat ? categoryVisual(dominantCat).color : undefined,
                     }}
                   />
                 )
               })}
             </div>
 
-            <div className="mt-2 flex justify-between text-[10px] tabular-nums text-gray-400">
+            <div className="mt-2 flex justify-between text-[10px] tabular-nums text-ink-faint">
               <span className="whitespace-nowrap">00:00</span>
               <span className="whitespace-nowrap">06:00</span>
               <span className="whitespace-nowrap">12:00</span>

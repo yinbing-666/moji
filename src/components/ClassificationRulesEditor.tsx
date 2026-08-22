@@ -87,29 +87,29 @@ export function ClassificationRulesEditor({ rules, onChange }: ClassificationRul
   }
 
   return (
-    <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+    <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-h3 font-semibold text-gray-900">分类规则</h2>
-          <p className="mt-1 text-xs text-gray-500">从上到下匹配应用名和窗口标题；首条命中的规则生效，未命中进入未分类。</p>
-          {issueCount > 0 && <p className="mt-1 text-xs text-amber-700">{issueCount} 条规则需要检查，展开后可查看具体原因。</p>}
+          <h2 className="text-h3 font-semibold text-ink">分类规则</h2>
+          <p className="mt-1 text-xs text-ink-muted">从上到下匹配应用名和窗口标题；首条命中的规则生效，未命中进入未分类。</p>
+          {issueCount > 0 && <p className="mt-1 text-xs text-warn-ink">{issueCount} 条规则需要检查，展开后可查看具体原因。</p>}
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={restoreDefaults} className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-400 hover:text-gray-800">
+          <button type="button" onClick={restoreDefaults} className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted hover:border-line-strong hover:text-ink">
             恢复默认
           </button>
-          <button type="button" onClick={addRule} className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700">
+          <button type="button" onClick={addRule} className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-on-accent hover:bg-accent-hover">
             新建规则
           </button>
         </div>
       </div>
 
       {rules.length === 0 ? (
-        <div className="border-y border-dashed border-gray-200 py-8 text-center text-sm text-gray-500">
+        <div className="border-y border-dashed border-line py-8 text-center text-sm text-ink-muted">
           暂无规则，新采集的活动会进入未分类。
         </div>
       ) : (
-        <div className="divide-y divide-gray-200 border-y border-gray-200">
+        <div className="divide-y divide-line border-y border-line">
           {rules.map((rule, index) => {
             const expanded = expandedId === rule.id
             const visual = categoryVisual(rule.category)
@@ -118,10 +118,10 @@ export function ClassificationRulesEditor({ rules, onChange }: ClassificationRul
             return (
               <div key={rule.id} className="py-3">
                 <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-                  <span className="hidden w-5 shrink-0 text-center text-xs tabular-nums text-gray-400 sm:block">{index + 1}</span>
+                  <span className="hidden w-5 shrink-0 text-center text-xs tabular-nums text-ink-faint sm:block">{index + 1}</span>
                   <div className="flex shrink-0 gap-0.5 sm:flex-col sm:gap-0">
-                    <button type="button" onClick={() => moveRule(index, -1)} disabled={index === 0} aria-label={`上移规则 ${rule.name}`} className="h-4 px-1 text-[10px] leading-none text-gray-400 hover:text-gray-700 disabled:opacity-25">↑</button>
-                    <button type="button" onClick={() => moveRule(index, 1)} disabled={index === rules.length - 1} aria-label={`下移规则 ${rule.name}`} className="h-4 px-1 text-[10px] leading-none text-gray-400 hover:text-gray-700 disabled:opacity-25">↓</button>
+                    <button type="button" onClick={() => moveRule(index, -1)} disabled={index === 0} aria-label={`上移规则 ${rule.name}`} className="h-4 px-1 text-[10px] leading-none text-ink-faint hover:text-ink disabled:opacity-25">↑</button>
+                    <button type="button" onClick={() => moveRule(index, 1)} disabled={index === rules.length - 1} aria-label={`下移规则 ${rule.name}`} className="h-4 px-1 text-[10px] leading-none text-ink-faint hover:text-ink disabled:opacity-25">↓</button>
                   </div>
                   <input
                     type="checkbox"
@@ -131,60 +131,65 @@ export function ClassificationRulesEditor({ rules, onChange }: ClassificationRul
                     className="h-4 w-4 shrink-0 accent-brand-600"
                   />
                   <button type="button" onClick={() => setExpandedId(expanded ? null : rule.id)} className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left sm:flex-row sm:items-center sm:gap-2">
-                    <span className="max-w-full truncate text-sm font-medium text-gray-800">{rule.name}</span>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ring-1 ${visual.badge}`}>{visual.label}</span>
-                    <span className="hidden shrink-0 text-xs text-gray-400 sm:inline">{keywordCount} 个关键词</span>
-                    {issues.length > 0 && <span className="shrink-0 text-[11px] text-amber-700">需检查</span>}
+                    <span className="max-w-full truncate text-sm font-medium text-ink">{rule.name}</span>
+                    <span
+                      className="shrink-0 rounded-full px-2 py-0.5 text-[11px]"
+                      style={{ backgroundColor: visual.soft, color: visual.color }}
+                    >
+                      {visual.label}
+                    </span>
+                    <span className="hidden shrink-0 text-xs text-ink-faint sm:inline">{keywordCount} 个关键词</span>
+                    {issues.length > 0 && <span className="shrink-0 text-[11px] text-warn-ink">需检查</span>}
                   </button>
-                  <button type="button" onClick={() => setExpandedId(expanded ? null : rule.id)} className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-800">
+                  <button type="button" onClick={() => setExpandedId(expanded ? null : rule.id)} className="rounded px-2 py-1 text-xs text-ink-muted hover:bg-sunken hover:text-ink">
                     {expanded ? '收起' : '编辑'}
                   </button>
                 </div>
 
                 {expanded && (
-                  <div className="ml-8 mt-3 grid gap-3 border-l-2 border-brand-100 pl-4 md:grid-cols-2">
-                    {issues.length > 0 && <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 md:col-span-2">{issues.join('；')}</p>}
-                    <label className="text-xs font-medium text-gray-600">
+                  <div className="ml-8 mt-3 grid gap-3 border-l-2 border-accent-soft pl-4 md:grid-cols-2">
+                    {issues.length > 0 && <p className="rounded-md bg-warn-soft px-3 py-2 text-xs text-warn-ink md:col-span-2">{issues.join('；')}</p>}
+                    <label className="text-xs font-medium text-ink-muted">
                       规则名称
                       <input
                         type="text"
                         value={rule.name}
                         onChange={event => updateRule(rule.id, { name: event.target.value })}
-                        className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                        className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
                       />
                     </label>
-                    <label className="text-xs font-medium text-gray-600">
+                    <label className="text-xs font-medium text-ink-muted">
                       归入分类
                       <select
                         value={rule.category}
                         onChange={event => updateRule(rule.id, { category: event.target.value as RuleCategory })}
-                        className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                        className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
                       >
                         {RULE_CATEGORIES.map(category => <option key={category} value={category}>{categoryVisual(category).label}</option>)}
                       </select>
                     </label>
-                    <label className="text-xs font-medium text-gray-600">
+                    <label className="text-xs font-medium text-ink-muted">
                       应用名关键词
                       <textarea
                         rows={4}
                         value={keywordText(rule.appKeywords)}
                         onChange={event => updateRule(rule.id, { appKeywords: parseKeywords(event.target.value) })}
                         placeholder={'code.exe\nobsidian'}
-                        className="mt-1 w-full resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                        className="mt-1 w-full resize-y rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
                       />
                     </label>
-                    <label className="text-xs font-medium text-gray-600">
+                    <label className="text-xs font-medium text-ink-muted">
                       窗口标题关键词
                       <textarea
                         rows={4}
                         value={keywordText(rule.titleKeywords)}
                         onChange={event => updateRule(rule.id, { titleKeywords: parseKeywords(event.target.value) })}
                         placeholder={'GitHub\n项目名称'}
-                        className="mt-1 w-full resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                        className="mt-1 w-full resize-y rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
                       />
                     </label>
                     <div className="md:col-span-2 flex justify-end">
-                      <button type="button" onClick={() => removeRule(rule)} className="rounded-md px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50">
+                      <button type="button" onClick={() => removeRule(rule)} className="rounded-md px-3 py-1.5 text-xs font-medium text-danger-ink hover:bg-danger-soft">
                         删除规则
                       </button>
                     </div>

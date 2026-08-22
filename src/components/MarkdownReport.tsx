@@ -17,10 +17,10 @@ function inlineText(value: string) {
   const parts = value.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g)
   return parts.map((part, index) => {
     if (part.startsWith('`') && part.endsWith('`')) {
-      return <code key={index} className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[0.9em] text-gray-700">{part.slice(1, -1)}</code>
+      return <code key={index} className="rounded bg-sunken px-1 py-0.5 font-mono text-[0.9em] text-ink-muted">{part.slice(1, -1)}</code>
     }
     if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={index} className="font-semibold text-gray-900">{part.slice(2, -2)}</strong>
+      return <strong key={index} className="font-semibold text-ink">{part.slice(2, -2)}</strong>
     }
     if (part.startsWith('*') && part.endsWith('*')) {
       return <em key={index}>{part.slice(1, -1)}</em>
@@ -39,18 +39,18 @@ function sectionTone(title = ''): SectionTone {
 
 function sectionClassName(tone: SectionTone): string {
   switch (tone) {
-    case 'summary': return 'border-brand-200 bg-brand-50/45'
-    case 'action': return 'border-sky-100 bg-sky-50/45'
-    case 'risk': return 'border-amber-200 bg-amber-50/45'
-    case 'timeline': return 'border-gray-200 bg-gray-50/70'
-    default: return 'border-gray-200/80 bg-surface'
+    case 'summary': return 'border-accent bg-accent-soft'
+    case 'action': return 'border-info-line bg-info-soft'
+    case 'risk': return 'border-warn-line bg-warn-soft'
+    case 'timeline': return 'border-line bg-sunken'
+    default: return 'border-line bg-surface'
   }
 }
 
 function headingClassName(level: number): string {
-  if (level === 1) return 'text-2xl font-semibold text-gray-900'
-  if (level === 2) return 'text-base font-semibold text-gray-900'
-  return 'text-sm font-semibold text-gray-800'
+  if (level === 1) return 'text-2xl font-semibold text-ink'
+  if (level === 2) return 'text-base font-semibold text-ink'
+  return 'text-sm font-semibold text-ink'
 }
 
 /** Render reports with a small, safe Markdown subset and document-style sections. */
@@ -64,7 +64,7 @@ export function MarkdownReport({ content }: MarkdownReportProps) {
   const flushParagraph = () => {
     if (paragraph.length === 0) return
     current().blocks.push(
-      <p key={`p-${current().blocks.length}`} className="whitespace-pre-wrap text-sm leading-7 text-gray-700">
+      <p key={`p-${current().blocks.length}`} className="whitespace-pre-wrap text-sm leading-7 text-ink-muted">
         {inlineText(paragraph.join('\n'))}
       </p>,
     )
@@ -74,10 +74,10 @@ export function MarkdownReport({ content }: MarkdownReportProps) {
     if (list.length === 0) return
     const actionList = current().tone === 'action'
     current().blocks.push(
-      <ul key={`ul-${current().blocks.length}`} className={actionList ? 'space-y-2 text-sm leading-6 text-gray-700' : 'list-disc space-y-1.5 pl-5 text-sm leading-6 text-gray-700'}>
+      <ul key={`ul-${current().blocks.length}`} className={actionList ? 'space-y-2 text-sm leading-6 text-ink-muted' : 'list-disc space-y-1.5 pl-5 text-sm leading-6 text-ink-muted'}>
         {list.map((item, index) => (
           <li key={`${item}-${index}`} className={actionList ? 'flex gap-2.5' : undefined}>
-            {actionList && <span aria-hidden="true" className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-500" />}
+            {actionList && <span aria-hidden="true" className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-info" />}
             <span>{inlineText(item)}</span>
           </li>
         ))}
@@ -111,7 +111,7 @@ export function MarkdownReport({ content }: MarkdownReportProps) {
     if (/^---+$/.test(trimmed)) {
       flushParagraph()
       flushList()
-      current().blocks.push(<hr key={`hr-${index}`} className="border-gray-200" />)
+      current().blocks.push(<hr key={`hr-${index}`} className="border-line" />)
       return
     }
     flushList()
@@ -121,7 +121,7 @@ export function MarkdownReport({ content }: MarkdownReportProps) {
   flushList()
 
   const visibleSections = sections.filter(section => section.title || section.blocks.length > 0)
-  if (visibleSections.length === 0) return <p className="text-sm text-gray-400">（报告暂无内容）</p>
+  if (visibleSections.length === 0) return <p className="text-sm text-ink-faint">（报告暂无内容）</p>
 
   return (
     <article className="space-y-4">
@@ -132,7 +132,7 @@ export function MarkdownReport({ content }: MarkdownReportProps) {
         return (
           <section key={`${title}-${index}`} className={isTitle ? 'pb-2' : `rounded-lg border p-4 ${sectionClassName(section.tone)}`}>
             <div className={isTitle ? 'mb-3' : 'mb-3 flex items-center gap-2'}>
-              {!isTitle && <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${section.tone === 'risk' ? 'bg-amber-500' : section.tone === 'action' ? 'bg-sky-500' : section.tone === 'summary' ? 'bg-brand-500' : 'bg-gray-400'}`} />}
+              {!isTitle && <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${section.tone === 'risk' ? 'bg-warn' : section.tone === 'action' ? 'bg-info' : section.tone === 'summary' ? 'bg-accent' : 'bg-ink-faint'}`} />}
               <h3 className={headingClassName(section.level)}>{inlineText(title)}</h3>
             </div>
             {section.blocks.length > 0 && <div className="space-y-3">{section.blocks}</div>}

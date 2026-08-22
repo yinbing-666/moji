@@ -85,21 +85,21 @@ function trendPoints(values: number[]): string {
 function rankList(items: AwReportRank[], emptyLabel: string, hasDuration: boolean) {
   const top = items.slice(0, 6)
   const max = Math.max(...top.map(item => hasDuration ? item.seconds : (item.count ?? 0)), 1)
-  if (top.length === 0) return <p className="py-4 text-center text-xs text-gray-400">{emptyLabel}</p>
+  if (top.length === 0) return <p className="py-4 text-center text-xs text-ink-faint">{emptyLabel}</p>
 
   return (
     <div className="space-y-3">
       {top.map((item, index) => (
         <div key={`${rankLabel(item)}-${index}`}>
           <div className="flex items-center justify-between gap-3 text-xs">
-            <span className="min-w-0 truncate font-medium text-gray-700">{rankLabel(item)}</span>
-            <span className="shrink-0 tabular-nums text-gray-400">
+            <span className="min-w-0 truncate font-medium text-ink-muted">{rankLabel(item)}</span>
+            <span className="shrink-0 tabular-nums text-ink-faint">
               {hasDuration ? fmtDuration(item.seconds) : `${item.count ?? 0} 条记录`}
             </span>
           </div>
-          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-100">
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-sunken">
             <div
-              className="h-full rounded-full bg-brand-400"
+              className="h-full rounded-full bg-accent"
               style={{ width: `${Math.max(4, ((hasDuration ? item.seconds : (item.count ?? 0)) / max) * 100)}%` }}
             />
           </div>
@@ -140,18 +140,18 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.08em] text-brand-600">墨记效率</p>
-          <h3 className="mt-1 text-lg font-semibold text-gray-900">效率分析概览</h3>
-          <p className="mt-1 text-xs text-gray-500">{periodLabel}{report.period?.start && report.period?.end ? ` · ${fmtDate(report.period.start)}—${fmtDate(report.period.end)}` : ''}</p>
+          <p className="text-xs font-medium uppercase tracking-[0.08em] text-accent-ink">墨记效率</p>
+          <h3 className="mt-1 text-lg font-semibold text-ink">效率分析概览</h3>
+          <p className="mt-1 text-xs text-ink-muted">{periodLabel}{report.period?.start && report.period?.end ? ` · ${fmtDate(report.period.start)}—${fmtDate(report.period.end)}` : ''}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="rounded-full bg-brand-50 px-2.5 py-1 font-medium text-brand-700">{sourceLabel}</span>
-          <span className="rounded-full border border-gray-200 px-2.5 py-1 text-gray-500">{statusLabel}</span>
+          <span className="rounded-full bg-accent-soft px-2.5 py-1 font-medium text-accent-ink">{sourceLabel}</span>
+          <span className="rounded-full border border-line px-2.5 py-1 text-ink-muted">{statusLabel}</span>
         </div>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)]">
-        <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
+        <section className="rounded-lg border border-line bg-surface p-4">
           <div className="flex items-center gap-4">
             <div
               className="relative h-28 w-28 shrink-0 rounded-full p-2"
@@ -159,14 +159,14 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
               aria-label={`效率评分 ${score.toFixed(0)} 分`}
             >
               <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-surface">
-                <span className="text-2xl font-semibold tabular-nums text-gray-900">{summary.score_status === 'calibrated' ? score.toFixed(0) : '待校准'}</span>
-                <span className="text-[11px] text-gray-400">/ 100</span>
+                <span className="text-2xl font-semibold tabular-nums text-ink">{summary.score_status === 'calibrated' ? score.toFixed(0) : '待校准'}</span>
+                <span className="text-[11px] text-ink-faint">/ 100</span>
               </div>
             </div>
             <div className="min-w-0">
-              <p className="text-xs text-gray-500">本周期效率评分</p>
-              <p className="mt-1 text-sm font-medium text-gray-900">{statusLabel}</p>
-              <p className="mt-2 text-xs leading-5 text-gray-500">
+              <p className="text-xs text-ink-muted">本周期效率评分</p>
+              <p className="mt-1 text-sm font-medium text-ink">{statusLabel}</p>
+              <p className="mt-2 text-xs leading-5 text-ink-muted">
                 {summary.score_status !== 'calibrated'
                   ? '本地数据可用于观察结构，积累足够历史后再校准评分。'
                   : pulseChange === null || pulseChange === undefined
@@ -184,47 +184,47 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
             ['深度工作', hasDuration ? fmtDuration(summary.deep_work?.seconds ?? result?.deep_work_seconds ?? 0) : `${summary.deep_work?.block_count ?? 0} 条`, hasDuration ? `${summary.deep_work?.block_count ?? result?.deep_work_blocks ?? 0} 个专注块` : '开发类活动记录'],
             ['AI 工具使用时长', hasDuration ? fmtDuration(summary.ai_seconds ?? result?.ai_seconds ?? 0) : `${summary.ai_count ?? 0} 条`, hasDuration ? '识别到的辅助工具时间' : '识别到的辅助工具记录'],
           ].map(([label, value, note]) => (
-            <section key={label} className="rounded-lg border border-gray-200/70 bg-surface p-3">
-              <p className="text-xs text-gray-500">{label}</p>
-              <p className="mt-2 text-lg font-semibold tabular-nums text-gray-900">{value}</p>
-              <p className="mt-1 text-[11px] text-gray-400">{note}</p>
+            <section key={label} className="rounded-lg border border-line bg-surface p-3">
+              <p className="text-xs text-ink-muted">{label}</p>
+              <p className="mt-2 text-lg font-semibold tabular-nums text-ink">{value}</p>
+              <p className="mt-1 text-[11px] text-ink-faint">{note}</p>
             </section>
           ))}
         </div>
       </div>
 
       {report.comparison?.previous_available && (
-        <section className="grid gap-px overflow-hidden rounded-lg border border-gray-200 bg-gray-200 sm:grid-cols-3">
+        <section className="grid gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3">
           {[
             ['投入变化', activeChange === null || activeChange === undefined ? '基线不足' : fmtSigned(activeChange, 0, '%'), '较上周同期活跃时长'],
             ['专注变化', productiveChange === null || productiveChange === undefined ? '基线不足' : fmtSigned(productiveChange, 1, ' 个百分点'), '开发与文档活动占比'],
             ['效率变化', pulseChange === null || pulseChange === undefined ? '基线不足' : fmtSigned(pulseChange, 1, ' 分'), '同一套本地评分口径'],
           ].map(([label, value, note]) => (
             <div key={label} className="bg-surface px-4 py-3">
-              <p className="text-[11px] text-gray-500">{label}</p>
-              <p className="mt-1 text-base font-semibold tabular-nums text-gray-900">{value}</p>
-              <p className="mt-0.5 text-[11px] text-gray-400">{note}</p>
+              <p className="text-[11px] text-ink-muted">{label}</p>
+              <p className="mt-1 text-base font-semibold tabular-nums text-ink">{value}</p>
+              <p className="mt-0.5 text-[11px] text-ink-faint">{note}</p>
             </div>
           ))}
         </section>
       )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
+        <section className="rounded-lg border border-line bg-surface p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h4 className="text-sm font-semibold text-gray-900">分类分布</h4>
-            <span className="text-xs text-gray-400">{fmtPercent(summary.category_coverage_percent)} 已分类</span>
+            <h4 className="text-sm font-semibold text-ink">分类分布</h4>
+            <span className="text-xs text-ink-faint">{fmtPercent(summary.category_coverage_percent)} 已分类</span>
           </div>
-          {categories.length === 0 ? <p className="py-6 text-center text-xs text-gray-400">暂无分类数据</p> : (
+          {categories.length === 0 ? <p className="py-6 text-center text-xs text-ink-faint">暂无分类数据</p> : (
             <div className="space-y-3">
               {categories.map(category => (
                 <div key={category.path}>
                   <div className="flex items-center justify-between gap-3 text-xs">
-                    <span className="min-w-0 truncate font-medium text-gray-700">{categoryLabel(category.path)}</span>
-                    <span className="shrink-0 tabular-nums text-gray-400">{hasDuration ? fmtDuration(category.seconds) : `${category.count ?? 0} 条`} · {fmtPercent(category.percent)}</span>
+                    <span className="min-w-0 truncate font-medium text-ink-muted">{categoryLabel(category.path)}</span>
+                    <span className="shrink-0 tabular-nums text-ink-faint">{hasDuration ? fmtDuration(category.seconds) : `${category.count ?? 0} 条`} · {fmtPercent(category.percent)}</span>
                   </div>
-                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-100">
-                    <div className="h-full rounded-full bg-brand-400" style={{ width: `${Math.max(3, ((hasDuration ? category.seconds : (category.count ?? 0)) / categoryMax) * 100)}%` }} />
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-sunken">
+                    <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(3, ((hasDuration ? category.seconds : (category.count ?? 0)) / categoryMax) * 100)}%` }} />
                   </div>
                 </div>
               ))}
@@ -232,21 +232,21 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
           )}
         </section>
 
-        <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
+        <section className="rounded-lg border border-line bg-surface p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h4 className="text-sm font-semibold text-gray-900">生产力趋势</h4>
-              <p className="mt-0.5 text-xs text-gray-400">最近 {trend.length || 0} 个周期</p>
+              <h4 className="text-sm font-semibold text-ink">生产力趋势</h4>
+              <p className="mt-0.5 text-xs text-ink-faint">最近 {trend.length || 0} 个周期</p>
             </div>
-            <span className="text-xs text-gray-400">0—100</span>
+            <span className="text-xs text-ink-faint">0—100</span>
           </div>
-          {trend.length === 0 ? <p className="py-6 text-center text-xs text-gray-400">暂无趋势数据</p> : (
+          {trend.length === 0 ? <p className="py-6 text-center text-xs text-ink-faint">暂无趋势数据</p> : (
             <div>
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-40 w-full overflow-visible" role="img" aria-label="生产力趋势图">
                 {[20, 45, 70, 95].map(y => <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="var(--color-gray-100)" strokeWidth="0.7" />)}
                 <polyline points={trendPoints(trend.map(item => item.pulse))} fill="none" stroke="var(--color-brand-500)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
               </svg>
-              <div className="mt-1 flex justify-between text-[10px] text-gray-400">
+              <div className="mt-1 flex justify-between text-[10px] text-ink-faint">
                 <span>{trend[0]?.date?.slice(5) ?? ''}</span>
                 <span>{trend[trend.length - 1]?.date?.slice(5) ?? ''}</span>
               </div>
@@ -256,40 +256,40 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
-        <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
+        <section className="rounded-lg border border-line bg-surface p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h4 className="text-sm font-semibold text-gray-900">小时活动</h4>
-            <span className="text-xs text-gray-400">按小时聚合</span>
+            <h4 className="text-sm font-semibold text-ink">小时活动</h4>
+            <span className="text-xs text-ink-faint">按小时聚合</span>
           </div>
-          {hourly.length === 0 ? <p className="py-6 text-center text-xs text-gray-400">暂无小时数据</p> : (
+          {hourly.length === 0 ? <p className="py-6 text-center text-xs text-ink-faint">暂无小时数据</p> : (
             <div className="flex h-36 items-end gap-1.5 sm:gap-2">
               {hourly.map((seconds, hour) => (
                 <div key={hour} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1">
                   <div className="group relative flex h-28 w-full items-end">
                     <div
-                      className="w-full rounded-t-sm bg-brand-400/75 transition-colors group-hover:bg-brand-500"
+                      className="w-full rounded-t-sm bg-accent/75 transition-colors group-hover:bg-accent"
                       style={{ height: `${seconds > 0 ? Math.max(7, (seconds / maxHour) * 100) : 3}%` }}
                         title={`${String(hour).padStart(2, '0')}:00 · ${hasDuration ? fmtDuration(seconds) : `${seconds} 条记录`}`}
                     />
                   </div>
-                  {hour % 3 === 0 ? <span className="text-[10px] tabular-nums text-gray-400">{String(hour).padStart(2, '0')}</span> : <span className="h-3" />}
+                  {hour % 3 === 0 ? <span className="text-[10px] tabular-nums text-ink-faint">{String(hour).padStart(2, '0')}</span> : <span className="h-3" />}
                 </div>
               ))}
             </div>
           )}
         </section>
 
-        <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
-          <h4 className="mb-3 text-sm font-semibold text-gray-900">生产力等级</h4>
-          {levels.length === 0 ? <p className="py-6 text-center text-xs text-gray-400">暂无等级数据</p> : (
+        <section className="rounded-lg border border-line bg-surface p-4">
+          <h4 className="mb-3 text-sm font-semibold text-ink">生产力等级</h4>
+          {levels.length === 0 ? <p className="py-6 text-center text-xs text-ink-faint">暂无等级数据</p> : (
             <div className="space-y-2.5">
               {levels.map(level => (
                 <div key={level.level} className="flex items-center justify-between gap-3 text-xs">
-                  <span className="flex min-w-0 items-center gap-2 text-gray-600">
+                  <span className="flex min-w-0 items-center gap-2 text-ink-muted">
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: LEVEL_COLOR[level.level] ?? '#929c98' }} />
                     <span className="truncate">{LEVEL_LABEL[level.level] ?? level.level}</span>
                   </span>
-                  <span className="shrink-0 tabular-nums text-gray-400">{fmtPercent(level.percent)}</span>
+                  <span className="shrink-0 tabular-nums text-ink-faint">{fmtPercent(level.percent)}</span>
                 </div>
               ))}
             </div>
@@ -297,13 +297,13 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
         </section>
       </div>
 
-      <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
+      <section className="rounded-lg border border-line bg-surface p-4">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div>
-            <h4 className="text-sm font-semibold text-gray-900">专注与打断</h4>
-            <p className="mt-0.5 text-xs text-gray-400">连续开发／文档活动合并为专注段，25 分钟以上计为深度工作。</p>
+            <h4 className="text-sm font-semibold text-ink">专注与打断</h4>
+            <p className="mt-0.5 text-xs text-ink-faint">连续开发／文档活动合并为专注段，25 分钟以上计为深度工作。</p>
           </div>
-          <span className="text-xs text-gray-400">应用切换 {focus?.switch_count ?? 0} 次</span>
+          <span className="text-xs text-ink-faint">应用切换 {focus?.switch_count ?? 0} 次</span>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {[
@@ -312,19 +312,19 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
             ['打断', `${focus?.interruption_count ?? 0} 次`, hasDuration ? `共 ${fmtDuration(focus?.interruption_seconds ?? 0)}` : '夹在专注活动之间'],
             ['短碎片', `${focus?.fragment_count ?? 0} 段`, hasDuration ? `共 ${fmtDuration(focus?.fragment_seconds ?? 0)}` : '少于 5 分钟的活动'],
           ].map(([label, value, note]) => (
-            <div key={label} className="border-l-2 border-brand-200 bg-gray-50/70 px-3 py-2">
-              <p className="text-xs text-gray-500">{label}</p>
-              <p className="mt-1 text-base font-semibold tabular-nums text-gray-900">{value}</p>
-              <p className="mt-0.5 text-[11px] text-gray-400">{note}</p>
+            <div key={label} className="border-l-2 border-accent bg-sunken px-3 py-2">
+              <p className="text-xs text-ink-muted">{label}</p>
+              <p className="mt-1 text-base font-semibold tabular-nums text-ink">{value}</p>
+              <p className="mt-0.5 text-[11px] text-ink-faint">{note}</p>
             </div>
           ))}
         </div>
         {(focus?.top_interruptions?.length ?? 0) > 0 && (
-          <div className="mt-3 border-t border-gray-100 pt-3">
-            <p className="mb-2 text-xs font-medium text-gray-600">主要打断来源</p>
+          <div className="mt-3 border-t border-line-soft pt-3">
+            <p className="mb-2 text-xs font-medium text-ink-muted">主要打断来源</p>
             <div className="flex flex-wrap gap-2">
               {focus?.top_interruptions?.map(item => (
-                <span key={item.app} className="rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-800">
+                <span key={item.app} className="rounded-full bg-warn-soft px-2.5 py-1 text-xs text-warn-ink">
                   {item.app} · {item.count} 次{hasDuration ? ` · ${fmtDuration(item.seconds)}` : ''}
                 </span>
               ))}
@@ -334,37 +334,37 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
       </section>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
+        <section className="rounded-lg border border-line bg-surface p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h4 className="text-sm font-semibold text-gray-900">应用排行</h4>
-            <span className="text-xs text-gray-400">{hasDuration ? '按活跃时长' : '按记录条数'}</span>
+            <h4 className="text-sm font-semibold text-ink">应用排行</h4>
+            <span className="text-xs text-ink-faint">{hasDuration ? '按活跃时长' : '按记录条数'}</span>
           </div>
             {rankList(summary.apps ?? [], '暂无应用数据', hasDuration)}
         </section>
-        <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
+        <section className="rounded-lg border border-line bg-surface p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h4 className="text-sm font-semibold text-gray-900">网站排行</h4>
-            <span className="text-xs text-gray-400">仅保留聚合域名</span>
+            <h4 className="text-sm font-semibold text-ink">网站排行</h4>
+            <span className="text-xs text-ink-faint">仅保留聚合域名</span>
           </div>
             {rankList(summary.domains ?? [], '暂无网站数据', hasDuration)}
         </section>
       </div>
 
-      <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
+      <section className="rounded-lg border border-line bg-surface p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h4 className="text-sm font-semibold text-gray-900">洞察与建议</h4>
-          <span className="text-xs text-gray-400">基于规则和数据证据</span>
+          <h4 className="text-sm font-semibold text-ink">洞察与建议</h4>
+          <span className="text-xs text-ink-faint">基于规则和数据证据</span>
         </div>
-        {insights.length === 0 ? <p className="py-4 text-center text-xs text-gray-400">暂无新的洞察</p> : (
+        {insights.length === 0 ? <p className="py-4 text-center text-xs text-ink-faint">暂无新的洞察</p> : (
           <div className="grid gap-3 md:grid-cols-2">
             {insights.map((insight, index) => (
-              <article key={`${insight.title ?? 'insight'}-${index}`} className="rounded-md border-l-3 border-l-brand-400 bg-gray-50/70 p-3">
+              <article key={`${insight.title ?? 'insight'}-${index}`} className="rounded-md border-l-3 border-l-accent bg-sunken p-3">
                 <div className="flex items-start justify-between gap-3">
-                  <h5 className="text-sm font-medium text-gray-800">{insight.title ?? '活动洞察'}</h5>
-                  <span className="shrink-0 text-[11px] text-gray-400">{insight.severity === 'warning' ? '需关注' : '提示'}</span>
+                  <h5 className="text-sm font-medium text-ink">{insight.title ?? '活动洞察'}</h5>
+                  <span className="shrink-0 text-[11px] text-ink-faint">{insight.severity === 'warning' ? '需关注' : '提示'}</span>
                 </div>
-                {insight.evidence && <p className="mt-2 text-xs leading-5 text-gray-600">{insight.evidence}</p>}
-                {insight.action && <p className="mt-2 text-xs leading-5 text-gray-500">建议：{insight.action}</p>}
+                {insight.evidence && <p className="mt-2 text-xs leading-5 text-ink-muted">{insight.evidence}</p>}
+                {insight.action && <p className="mt-2 text-xs leading-5 text-ink-muted">建议：{insight.action}</p>}
               </article>
             ))}
           </div>
@@ -372,19 +372,19 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
       </section>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
-          <h4 className="mb-3 text-sm font-semibold text-gray-900">规则健康度</h4>
+        <section className="rounded-lg border border-line bg-surface p-4">
+          <h4 className="mb-3 text-sm font-semibold text-ink">规则健康度</h4>
           <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-md bg-gray-50 p-2"><p className="text-lg font-semibold tabular-nums text-gray-900">{rules?.rule_count ?? 0}</p><p className="text-[11px] text-gray-400">规则</p></div>
-            <div className="rounded-md bg-gray-50 p-2"><p className="text-lg font-semibold tabular-nums text-gray-900">{rules?.issue_count ?? 0}</p><p className="text-[11px] text-gray-400">问题</p></div>
-            <div className="rounded-md bg-gray-50 p-2"><p className="text-lg font-semibold tabular-nums text-gray-900">{fmtPercent(rules?.coverage_percent)}</p><p className="text-[11px] text-gray-400">覆盖率</p></div>
+            <div className="rounded-md bg-sunken p-2"><p className="text-lg font-semibold tabular-nums text-ink">{rules?.rule_count ?? 0}</p><p className="text-[11px] text-ink-faint">规则</p></div>
+            <div className="rounded-md bg-sunken p-2"><p className="text-lg font-semibold tabular-nums text-ink">{rules?.issue_count ?? 0}</p><p className="text-[11px] text-ink-faint">问题</p></div>
+            <div className="rounded-md bg-sunken p-2"><p className="text-lg font-semibold tabular-nums text-ink">{fmtPercent(rules?.coverage_percent)}</p><p className="text-[11px] text-ink-faint">覆盖率</p></div>
           </div>
           {(rules?.suggestions?.length ?? 0) > 0 && (
-            <div className="mt-3 border-t border-gray-100 pt-3">
-              <p className="text-xs font-medium text-gray-600">优先处理的未分类项目</p>
+            <div className="mt-3 border-t border-line-soft pt-3">
+              <p className="text-xs font-medium text-ink-muted">优先处理的未分类项目</p>
               <div className="mt-2 space-y-1.5">
                 {rules?.suggestions?.slice(0, 3).map((suggestion, index) => (
-                  <p key={`${suggestion.source}-${suggestion.value}-${index}`} className="truncate text-xs text-gray-500" title={suggestion.value}>
+                  <p key={`${suggestion.source}-${suggestion.value}-${index}`} className="truncate text-xs text-ink-muted" title={suggestion.value}>
                     {suggestion.source}{suggestion.expected_seconds ? ` · ${fmtDuration(suggestion.expected_seconds)}` : ''}：{suggestion.value}
                   </p>
                 ))}
@@ -392,37 +392,37 @@ export function AwReportDashboard({ report, result, onOpenHtml }: AwReportDashbo
             </div>
           )}
           {coverageTrend.length > 0 && (
-            <div className="mt-3 border-t border-gray-100 pt-3">
+            <div className="mt-3 border-t border-line-soft pt-3">
               <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-xs font-medium text-gray-600">最近 7 个活跃日覆盖率</p>
-                <span className="text-[11px] text-gray-400">越高表示待整理活动越少</span>
+                <p className="text-xs font-medium text-ink-muted">最近 7 个活跃日覆盖率</p>
+                <span className="text-[11px] text-ink-faint">越高表示待整理活动越少</span>
               </div>
               <div className="flex h-16 items-end gap-2">
                 {coverageTrend.map(item => (
                   <div key={item.date} className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-1" title={`${item.date} · ${fmtPercent(item.coverage_percent)}`}>
-                    <div className="w-full rounded-t-sm bg-brand-300 group-hover:bg-brand-400" style={{ height: `${Math.max(4, item.coverage_percent ?? 0)}%` }} />
-                    <span className="text-[9px] text-gray-400">{item.date.slice(5)}</span>
+                    <div className="w-full rounded-t-sm bg-accent group-hover:bg-accent" style={{ height: `${Math.max(4, item.coverage_percent ?? 0)}%` }} />
+                    <span className="text-[9px] text-ink-faint">{item.date.slice(5)}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
         </section>
-        <section className="rounded-lg border border-gray-200/70 bg-surface p-4">
-          <h4 className="mb-3 text-sm font-semibold text-gray-900">数据与隐私</h4>
-            <p className="text-xs leading-5 text-gray-500">报告只使用当前数据源的聚合结果，原始事件不会写入效率报告。</p>
+        <section className="rounded-lg border border-line bg-surface p-4">
+          <h4 className="mb-3 text-sm font-semibold text-ink">数据与隐私</h4>
+            <p className="text-xs leading-5 text-ink-muted">报告只使用当前数据源的聚合结果，原始事件不会写入效率报告。</p>
           {report.privacy && <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            {Object.entries(report.privacy).map(([key, value]) => <div key={key} className="flex min-w-0 justify-between gap-2"><span className="text-gray-500">{PRIVACY_LABEL[key] ?? key}</span><span className="truncate text-right text-gray-400">{privacyValue(value)}</span></div>)}
+            {Object.entries(report.privacy).map(([key, value]) => <div key={key} className="flex min-w-0 justify-between gap-2"><span className="text-ink-muted">{PRIVACY_LABEL[key] ?? key}</span><span className="truncate text-right text-ink-faint">{privacyValue(value)}</span></div>)}
           </div>}
         </section>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200/70 bg-gray-50/60 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-sunken p-3">
         <div>
-          <p className="text-sm font-medium text-gray-800">{sourceLabel}（{periodLabel}）</p>
-          <p className="mt-0.5 text-xs text-gray-500">APP 内可直接阅读{onOpenHtml ? '，也可导出原始 HTML 分享。' : '。'}</p>
+          <p className="text-sm font-medium text-ink">{sourceLabel}（{periodLabel}）</p>
+          <p className="mt-0.5 text-xs text-ink-muted">APP 内可直接阅读{onOpenHtml ? '，也可导出原始 HTML 分享。' : '。'}</p>
         </div>
-        {onOpenHtml && <button type="button" onClick={onOpenHtml} className="rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700">打开 HTML 报告</button>}
+        {onOpenHtml && <button type="button" onClick={onOpenHtml} className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink">打开 HTML 报告</button>}
       </div>
     </div>
   )

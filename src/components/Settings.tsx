@@ -421,12 +421,12 @@ export function Settings() {
   return (
     <div className="space-y-6">
       {/* P1优化: 基础设置区 - 层级2：标准卡片 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
-        <h2 className="text-h3 font-semibold text-gray-900 mb-4">基础设置</h2>
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
+        <h2 className="text-h3 font-semibold text-ink mb-4">基础设置</h2>
 
         {/* 数据源选择 - 单选按钮组 */}
         <fieldset className="mb-5">
-          <legend className="text-sm font-medium text-gray-700 mb-2">数据来源</legend>
+          <legend className="text-sm font-medium text-ink-muted mb-2">数据来源</legend>
           
           <div className="space-y-2">
             {dataSourceOptions.map(opt => (
@@ -434,8 +434,8 @@ export function Settings() {
                 key={opt.value}
                 className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
                   localSettings.dataSource === opt.value
-                    ? 'border-brand-300 bg-brand-50/30'
-                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    ? 'border-accent bg-accent-soft'
+                    : 'border-line hover:border-line-strong hover:bg-sunken'
                 }`}
               >
                 <input
@@ -444,11 +444,11 @@ export function Settings() {
                   value={opt.value}
                   checked={localSettings.dataSource === opt.value}
                   onChange={e => updateField('dataSource', e.target.value as DataSource)}
-                  className="mt-0.5 h-4 w-4 text-brand-600 focus:ring-brand-500"
+                  className="mt-0.5 h-4 w-4 text-accent-ink focus:ring-accent"
                 />
                 <div>
-                  <span className="text-sm font-medium text-gray-900">{opt.label}</span>
-                  <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
+                  <span className="text-sm font-medium text-ink">{opt.label}</span>
+                  <p className="text-xs text-ink-muted mt-0.5">{opt.desc}</p>
                 </div>
               </label>
             ))}
@@ -457,9 +457,9 @@ export function Settings() {
 
         {/* API配置 - 条件渲染 */}
         {localSettings.dataSource !== 'local' && (
-          <div className="space-y-4 rounded-lg bg-gray-50/50 p-4">
+          <div className="space-y-4 rounded-lg bg-sunken p-4">
             <div>
-              <label htmlFor="api-key" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="api-key" className="block text-sm font-medium text-ink-muted mb-1">
                 API Key
               </label>
               <input
@@ -468,12 +468,12 @@ export function Settings() {
                 value={localSettings.apiKey}
                 onChange={e => updateField('apiKey', e.target.value)}
                 placeholder="输入你的 API Key"
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
               />
             </div>
 
             <div>
-              <label htmlFor="base-url" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="base-url" className="block text-sm font-medium text-ink-muted mb-1">
                 Base URL
               </label>
               <input
@@ -482,12 +482,12 @@ export function Settings() {
                 value={localSettings.baseUrl}
                 onChange={e => updateField('baseUrl', e.target.value)}
                 placeholder="https://api.openai.com/v1（任何 OpenAI 兼容服务）"
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
               />
             </div>
 
             <div>
-              <label htmlFor="text-model" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="text-model" className="block text-sm font-medium text-ink-muted mb-1">
                 模型名称
               </label>
               <input
@@ -496,9 +496,9 @@ export function Settings() {
                 value={localSettings.textModel}
                 onChange={e => updateField('textModel', e.target.value)}
                 placeholder="如 gpt-4o-mini / deepseek-chat"
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
               />
-              <p className="mt-1 text-xs text-gray-400">任何兼容 OpenAI 接口的纯文本对话模型均可</p>
+              <p className="mt-1 text-xs text-ink-faint">任何兼容 OpenAI 接口的纯文本对话模型均可</p>
             </div>
 
             {/* 连接测试按钮 + 结果显示 */}
@@ -510,14 +510,14 @@ export function Settings() {
                   || !localSettings.apiKey.trim()
                   || !localSettings.baseUrl.trim()
                   || !localSettings.textModel.trim()}
-                className="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md border border-line-strong bg-surface px-4 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isTestingConnection ? '测试中...' : '测试连接'}
               </button>
 
               {connectionTestResult && (
                 <span className={`text-xs font-medium ${
-                  connectionTestResult.ok ? 'text-teal-600' : 'text-red-600'
+                  connectionTestResult.ok ? 'text-accent-ink' : 'text-danger-ink'
                 }`}>
                   {connectionTestResult.ok ? '✓ 连接成功' : `✗ ${connectionTestResult.message}`}
                 </span>
@@ -527,7 +527,7 @@ export function Settings() {
         )}
 
         {localSettings.dataSource === 'local' && (
-          <div className="rounded-lg border border-teal-100 bg-teal-50/30 p-4 text-sm text-teal-800">
+          <div className="rounded-lg border border-accent-soft bg-accent-soft p-4 text-sm text-accent-ink">
             无 LLM 模式使用本地分类规则，不发送窗口内容。ActivityWatch 由墨记内置并随应用自动运行，无需安装或配置。
           </div>
         )}
@@ -539,11 +539,11 @@ export function Settings() {
       />
 
       {/* 采集行为 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
-        <h2 className="text-h3 font-semibold text-gray-900 mb-4">采集行为</h2>
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
+        <h2 className="text-h3 font-semibold text-ink mb-4">采集行为</h2>
 
         <fieldset className="mb-4">
-          <legend className="text-sm font-medium text-gray-700 mb-2">采集间隔</legend>
+          <legend className="text-sm font-medium text-ink-muted mb-2">采集间隔</legend>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
               { sec: 60, label: '1 分钟' },
@@ -557,8 +557,8 @@ export function Settings() {
                 onClick={() => updateField('intervalSeconds', opt.sec)}
                 className={`rounded-lg border px-3 py-2 text-sm transition-all ${
                   localSettings.intervalSeconds === opt.sec
-                    ? 'border-brand-500 bg-brand-50/30 text-brand-700'
-                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    ? 'border-accent bg-accent-soft text-accent-ink'
+                    : 'border-line hover:border-line-strong hover:bg-sunken'
                 }`}
               >
                 {opt.label}
@@ -568,7 +568,7 @@ export function Settings() {
         </fieldset>
 
         <fieldset className="mb-4">
-          <legend className="text-sm font-medium text-gray-700 mb-2">每轮分析窗口数</legend>
+          <legend className="text-sm font-medium text-ink-muted mb-2">每轮分析窗口数</legend>
           <div className="flex flex-wrap gap-2">
             {[1, 2, 3, 5, 8].map(n => (
               <button
@@ -577,22 +577,22 @@ export function Settings() {
                 onClick={() => updateField('maxWindowsPerCapture', n)}
                 className={`rounded-lg border px-3 py-2 text-sm transition-all ${
                   localSettings.maxWindowsPerCapture === n
-                    ? 'border-brand-500 bg-brand-50/30 text-brand-700'
-                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    ? 'border-accent bg-accent-soft text-accent-ink'
+                    : 'border-line hover:border-line-strong hover:bg-sunken'
                 }`}
               >
                 {n} 个
               </button>
             ))}
           </div>
-          <p className="mt-1 text-xs text-gray-400">前台窗口优先，自动跳过重复应用</p>
+          <p className="mt-1 text-xs text-ink-faint">前台窗口优先，自动跳过重复应用</p>
         </fieldset>
 
         <fieldset className="mb-4">
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-line p-3">
             <div>
-              <p className="text-sm font-medium text-gray-900">启动时自动开始采集</p>
-              <p className="text-xs text-gray-500">打开应用后自动进入定时采集</p>
+              <p className="text-sm font-medium text-ink">启动时自动开始采集</p>
+              <p className="text-xs text-ink-muted">打开应用后自动进入定时采集</p>
             </div>
             <input
               type="checkbox"
@@ -604,10 +604,10 @@ export function Settings() {
         </fieldset>
 
         <fieldset className="mb-4">
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-line p-3">
             <div>
-              <p className="text-sm font-medium text-gray-900">保存截图缩略图</p>
-              <p className="text-xs text-gray-500">开启后才会截屏，并在记录里保存压缩缩略图；关闭时识别完全基于窗口文本</p>
+              <p className="text-sm font-medium text-ink">保存截图缩略图</p>
+              <p className="text-xs text-ink-muted">开启后才会截屏，并在记录里保存压缩缩略图；关闭时识别完全基于窗口文本</p>
             </div>
             <input
               type="checkbox"
@@ -619,8 +619,8 @@ export function Settings() {
         </fieldset>
 
         <fieldset className="mb-4">
-          <legend className="mb-2 text-sm font-medium text-gray-700">空闲判定</legend>
-          <div className="grid grid-cols-5 rounded-lg border border-gray-200 bg-gray-50 p-1">
+          <legend className="mb-2 text-sm font-medium text-ink-muted">空闲判定</legend>
+          <div className="grid grid-cols-5 rounded-lg border border-line bg-sunken p-1">
             {[1, 3, 5, 10, 15].map(minutes => (
               <button
                 key={minutes}
@@ -629,24 +629,24 @@ export function Settings() {
                 onClick={() => updateField('idleThresholdMinutes', minutes)}
                 className={`min-h-8 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
                   localSettings.idleThresholdMinutes === minutes
-                    ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200/80'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'bg-surface text-ink shadow-sm ring-1 ring-line'
+                    : 'text-ink-muted hover:text-ink'
                 }`}
               >
                 {minutes} 分
               </button>
             ))}
           </div>
-          <p className="mt-1.5 text-xs text-gray-500">锁屏立即暂停；达到阈值前会从本次活动中扣除空闲秒数</p>
+          <p className="mt-1.5 text-xs text-ink-muted">锁屏立即暂停；达到阈值前会从本次活动中扣除空闲秒数</p>
         </fieldset>
 
         <fieldset>
-          <legend className="mb-2 text-sm font-medium text-gray-700">可选上下文</legend>
-          <div className="divide-y divide-gray-200 rounded-lg border border-gray-200">
+          <legend className="mb-2 text-sm font-medium text-ink-muted">可选上下文</legend>
+          <div className="divide-y divide-line rounded-lg border border-line">
             <label className="flex items-center justify-between gap-3 p-3">
               <span>
-                <span className="block text-sm font-medium text-gray-900">浏览器域名</span>
-                <span className="block text-xs text-gray-500">只保存域名，不保存完整网址</span>
+                <span className="block text-sm font-medium text-ink">浏览器域名</span>
+                <span className="block text-xs text-ink-muted">只保存域名，不保存完整网址</span>
               </span>
               <input
                 type="checkbox"
@@ -657,8 +657,8 @@ export function Settings() {
             </label>
             <label className="flex items-center justify-between gap-3 p-3">
               <span>
-                <span className="block text-sm font-medium text-gray-900">IDE 项目名</span>
-                <span className="block text-xs text-gray-500">从窗口标题提取项目名，不保存文件内容</span>
+                <span className="block text-sm font-medium text-ink">IDE 项目名</span>
+                <span className="block text-xs text-ink-muted">从窗口标题提取项目名，不保存文件内容</span>
               </span>
               <input
                 type="checkbox"
@@ -672,11 +672,11 @@ export function Settings() {
       </section>
 
       {/* 隐私排除 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
-        <h2 className="text-h3 font-semibold text-gray-900 mb-4">隐私排除</h2>
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
+        <h2 className="text-h3 font-semibold text-ink mb-4">隐私排除</h2>
 
         <fieldset className="mb-4">
-          <label htmlFor="excluded-keywords" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="excluded-keywords" className="block text-sm font-medium text-ink-muted mb-1">
             排除应用/窗口关键词
           </label>
           <textarea
@@ -685,13 +685,13 @@ export function Settings() {
             value={localSettings.excludedKeywords.join('\n')}
             onChange={e => updateField('excludedKeywords', e.target.value.split(/[\n,，]/).map(s => s.trim()).filter(Boolean))}
             placeholder={'Password\nToken\nBank'}
-            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+            className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
           />
-          <p className="mt-1 text-xs text-gray-400">每行或逗号分隔；命中的窗口不会发送给 AI</p>
+          <p className="mt-1 text-xs text-ink-faint">每行或逗号分隔；命中的窗口不会发送给 AI</p>
         </fieldset>
 
         <fieldset className="mb-4">
-          <label htmlFor="excluded-apps" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="excluded-apps" className="block text-sm font-medium text-ink-muted mb-1">
             排除应用
           </label>
           <textarea
@@ -700,13 +700,13 @@ export function Settings() {
             value={localSettings.excludedApps.join('\n')}
             onChange={e => updateField('excludedApps', e.target.value.split(/[\n,，]/).map(s => s.trim()).filter(Boolean))}
             placeholder={'1password\nBitwarden'}
-            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+            className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
           />
-          <p className="mt-1 text-xs text-gray-400">按进程名匹配，命中的窗口不采集</p>
+          <p className="mt-1 text-xs text-ink-faint">按进程名匹配，命中的窗口不采集</p>
         </fieldset>
 
         <fieldset>
-          <label htmlFor="excluded-titles" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="excluded-titles" className="block text-sm font-medium text-ink-muted mb-1">
             排除标题关键词
           </label>
           <textarea
@@ -715,19 +715,19 @@ export function Settings() {
             value={localSettings.excludedTitlePatterns.join('\n')}
             onChange={e => updateField('excludedTitlePatterns', e.target.value.split(/[\n,，]/).map(s => s.trim()).filter(Boolean))}
             placeholder={'Lock Screen\nLogin'}
-            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+            className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
           />
-          <p className="mt-1 text-xs text-gray-400">标题包含这些关键词的窗口会跳过</p>
+          <p className="mt-1 text-xs text-ink-faint">标题包含这些关键词的窗口会跳过</p>
         </fieldset>
       </section>
 
       {/* P1优化: 外观设置 - 层级2：标准卡片 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
-        <h2 className="text-h3 font-semibold text-gray-900 mb-4">外观与主题</h2>
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
+        <h2 className="text-h3 font-semibold text-ink mb-4">外观与主题</h2>
 
         <fieldset className="mb-4">
-          <legend className="mb-2 text-sm font-medium text-gray-700">颜色模式</legend>
-          <div className="grid grid-cols-3 rounded-lg border border-gray-200 bg-gray-50 p-1">
+          <legend className="mb-2 text-sm font-medium text-ink-muted">颜色模式</legend>
+          <div className="grid grid-cols-3 rounded-lg border border-line bg-sunken p-1">
             {themeModes.map(mode => (
               <button
                 key={mode.value}
@@ -739,20 +739,20 @@ export function Settings() {
                 })}
                 className={`min-h-8 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
                   localSettings.appearance?.themeMode === mode.value
-                    ? 'bg-surface text-gray-900 shadow-sm ring-1 ring-gray-200/80'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'bg-surface text-ink shadow-sm ring-1 ring-line'
+                    : 'text-ink-muted hover:text-ink'
                 }`}
               >
                 {mode.label}
               </button>
             ))}
           </div>
-          <p className="mt-1.5 text-xs text-gray-400">跟随系统会在 Windows 主题变化时自动切换</p>
+          <p className="mt-1.5 text-xs text-ink-faint">跟随系统会在 Windows 主题变化时自动切换</p>
         </fieldset>
 
         {/* 背景预设选择 - 卡片网格 */}
         <fieldset className="mb-4">
-          <legend className="text-sm font-medium text-gray-700 mb-2">背景风格</legend>
+          <legend className="text-sm font-medium text-ink-muted mb-2">背景风格</legend>
           
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {backgroundPresets.map(preset => (
@@ -765,8 +765,8 @@ export function Settings() {
                 })}
                 className={`relative rounded-lg border-2 p-3 text-left transition-all ${
                   localSettings.appearance?.backgroundPreset === preset.value
-                    ? 'border-brand-500 bg-brand-50/20'
-                    : 'border-gray-200 hover:border-gray-300'
+                    ? 'border-accent bg-accent-soft'
+                    : 'border-line hover:border-line-strong'
                 }`}
               >
                 {/* 预览色块 */}
@@ -782,13 +782,13 @@ export function Settings() {
                     ),
                   }}
                 />
-                <span className="text-xs font-medium text-gray-900 block">{preset.label}</span>
-                <span className="text-[10px] text-gray-500 block mt-0.5">{preset.desc}</span>
+                <span className="text-xs font-medium text-ink block">{preset.label}</span>
+                <span className="text-[10px] text-ink-muted block mt-0.5">{preset.desc}</span>
                 
                 {/* 选中指示器 */}
                 {localSettings.appearance?.backgroundPreset === preset.value && (
-                  <span className="absolute top-1.5 right-1.5 h-4 w-4 rounded-full bg-brand-500 flex items-center justify-center">
-                    <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <span className="absolute top-1.5 right-1.5 h-4 w-4 rounded-full bg-accent flex items-center justify-center">
+                    <svg className="h-2.5 w-2.5 text-on-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   </span>
@@ -800,7 +800,7 @@ export function Settings() {
 
         {/* 自定义背景上传 */}
         {localSettings.appearance?.backgroundPreset === 'custom' && (
-          <div className="rounded-lg border border-dashed border-gray-300 p-4 text-center">
+          <div className="rounded-lg border border-dashed border-line-strong p-4 text-center">
             <input
               type="file"
               accept="image/*"
@@ -822,7 +822,7 @@ export function Settings() {
             />
             <label
               htmlFor="custom-bg-upload"
-              className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+              className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm text-ink-muted hover:bg-sunken"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -830,20 +830,20 @@ export function Settings() {
               选择图片
             </label>
             {localSettings.appearance?.customBackground && (
-              <p className="mt-2 text-xs text-green-600">✓ 已设置自定义背景</p>
+              <p className="mt-2 text-xs text-ok-ink">✓ 已设置自定义背景</p>
             )}
           </div>
         )}
       </section>
 
       {/* P1优化: 数据管理 - 层级2：标准卡片 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
-        <h2 className="text-h3 font-semibold text-gray-900 mb-4">数据管理</h2>
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
+        <h2 className="text-h3 font-semibold text-ink mb-4">数据管理</h2>
 
         <div className="space-y-3">
           {/* 导入导出按钮组 */}
           <div className="flex flex-wrap gap-3">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-line-strong bg-surface px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
               </svg>
@@ -859,7 +859,7 @@ export function Settings() {
             <button
               type="button"
               onClick={handleExport}
-              className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+              className="inline-flex items-center gap-2 rounded-md border border-line-strong bg-surface px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -869,27 +869,27 @@ export function Settings() {
             <button
               type="button"
               onClick={() => void handleExportDiagnostics()}
-              className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+              className="inline-flex items-center gap-2 rounded-md border border-line-strong bg-surface px-4 py-2 text-sm font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink"
               title="不包含活动、窗口标题、截图或 API 配置值"
             >
               导出脱敏诊断
             </button>
           </div>
-          <p className="text-xs leading-5 text-gray-500">诊断文件只包含运行模式、采集参数计数、服务状态和本次会话错误，不包含活动内容、窗口标题、截图或 API 配置值。</p>
+          <p className="text-xs leading-5 text-ink-muted">诊断文件只包含运行模式、采集参数计数、服务状态和本次会话错误，不包含活动内容、窗口标题、截图或 API 配置值。</p>
 
           {/* 危险区域：清空数据 */}
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50/30 p-4">
+          <div className="mt-4 rounded-lg border border-danger-line bg-danger-soft p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-sm font-medium text-red-800">危险操作</h3>
-                <p className="mt-0.5 text-xs text-red-600">
+                <h3 className="text-sm font-medium text-danger-ink">危险操作</h3>
+                <p className="mt-0.5 text-xs text-danger-ink">
                   清空所有活动记录，此操作不可恢复
                 </p>
               </div>
               <button
                 type="button"
                 onClick={handleClearAll}
-                className="shrink-0 rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:border-red-400"
+                className="shrink-0 rounded-md border border-danger-line bg-surface px-3 py-1.5 text-xs font-medium text-danger-ink transition-colors hover:bg-danger-soft hover:border-danger-line"
               >
                 清空全部数据
               </button>
@@ -899,21 +899,21 @@ export function Settings() {
       </section>
 
       {/* 数据库与备份 */}
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
-        <h2 className="text-h3 font-semibold text-gray-900 mb-4">数据库与备份</h2>
-        <div className="mb-4 space-y-1 rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2 text-xs text-gray-600">
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
+        <h2 className="text-h3 font-semibold text-ink mb-4">数据库与备份</h2>
+        <div className="mb-4 space-y-1 rounded-lg border border-line bg-sunken px-3 py-2 text-xs text-ink-muted">
           <p>状态：{dbStatus ?? (sqliteReady ? '检测中…' : '未连接')}</p>
           {storageStats && <p>占用：{formatBytes(storageStats.database_bytes)} · {storageStats.activity_count} 条活动 · {storageStats.screenshot_count} 张缩略图</p>}
           <p>本地备份文件：{backupExists ? '已存在' : '尚无'}</p>
           <p>自动备份：就绪后每 30 秒写入一次</p>
         </div>
-        <div className="mb-4 grid gap-3 border-y border-gray-200 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-          <label className="text-sm font-medium text-gray-700">
+        <div className="mb-4 grid gap-3 border-y border-line py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <label className="text-sm font-medium text-ink-muted">
             数据保留期限
             <select
               value={localSettings.retentionDays}
               onChange={event => updateField('retentionDays', Number(event.target.value))}
-              className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none"
+              className="mt-1 block w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none"
             >
               <option value={0}>永久保留</option>
               <option value={30}>30 天</option>
@@ -926,7 +926,7 @@ export function Settings() {
             type="button"
             onClick={() => void handleCleanupExpired()}
             disabled={backupBusy || localSettings.retentionDays === 0 || !storageStats?.expired_count}
-            className="rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md border border-danger-line bg-surface px-3 py-2 text-sm font-medium text-danger-ink hover:bg-danger-soft disabled:cursor-not-allowed disabled:opacity-50"
           >
             清理 {storageStats?.expired_count ?? 0} 条过期活动
           </button>
@@ -936,7 +936,7 @@ export function Settings() {
             type="button"
             onClick={() => void handleBackupNow()}
             disabled={backupBusy || !sqliteReady}
-            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+            className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink disabled:opacity-50"
           >
             {backupBusy ? '处理中…' : '立即备份'}
           </button>
@@ -944,7 +944,7 @@ export function Settings() {
             type="button"
             onClick={() => void handleRestoreBackup()}
             disabled={backupBusy || !sqliteReady || !backupExists}
-            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+            className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink disabled:opacity-50"
           >
             从备份恢复
           </button>
@@ -952,34 +952,34 @@ export function Settings() {
             type="button"
             onClick={() => void refreshDbInfo()}
             disabled={backupBusy}
-            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
+            className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink disabled:opacity-50"
           >
             刷新诊断
           </button>
         </div>
-        {backupMsg && <p className="mt-2 text-xs text-gray-600">{backupMsg}</p>}
+        {backupMsg && <p className="mt-2 text-xs text-ink-muted">{backupMsg}</p>}
       </section>
 
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-h3 font-semibold text-gray-900">桌面集成</h2>
-            <p className="mt-1 text-xs text-gray-500">系统级能力均默认关闭，可随时单独撤销</p>
+            <h2 className="text-h3 font-semibold text-ink">桌面集成</h2>
+            <p className="mt-1 text-xs text-ink-muted">系统级能力均默认关闭，可随时单独撤销</p>
           </div>
           <button
             type="button"
             onClick={() => void refreshPlatformInfo()}
             disabled={desktopBusy}
-            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 disabled:opacity-50"
+            className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted disabled:opacity-50"
           >
             刷新状态
           </button>
         </div>
-        <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 px-4">
+        <div className="divide-y divide-line-soft rounded-lg border border-line px-4">
           <label className="flex items-center justify-between gap-4 py-3">
             <span className="min-w-0">
-              <span className="block text-sm font-medium text-gray-900">开机自启</span>
-              <span className="mt-0.5 block text-xs text-gray-500">登录系统后启动墨记</span>
+              <span className="block text-sm font-medium text-ink">开机自启</span>
+              <span className="mt-0.5 block text-xs text-ink-muted">登录系统后启动墨记</span>
             </span>
             <input
               type="checkbox"
@@ -991,8 +991,8 @@ export function Settings() {
           </label>
           <label className="flex items-center justify-between gap-4 py-3">
             <span className="min-w-0">
-              <span className="block text-sm font-medium text-gray-900">显示／隐藏快捷键</span>
-              <span className="mt-0.5 block break-all text-xs text-gray-500">{desktopStatus?.shortcut ?? 'CommandOrControl+Shift+M'}</span>
+              <span className="block text-sm font-medium text-ink">显示／隐藏快捷键</span>
+              <span className="mt-0.5 block break-all text-xs text-ink-muted">{desktopStatus?.shortcut ?? 'CommandOrControl+Shift+M'}</span>
             </span>
             <input
               type="checkbox"
@@ -1004,8 +1004,8 @@ export function Settings() {
           </label>
           <label className="flex items-center justify-between gap-4 py-3">
             <span className="min-w-0">
-              <span className="block text-sm font-medium text-gray-900">系统通知</span>
-              <span className="mt-0.5 block text-xs text-gray-500">权限：{desktopStatus?.notificationPermission ?? '未检测'}</span>
+              <span className="block text-sm font-medium text-ink">系统通知</span>
+              <span className="mt-0.5 block text-xs text-ink-muted">权限：{desktopStatus?.notificationPermission ?? '未检测'}</span>
             </span>
             <input
               type="checkbox"
@@ -1016,36 +1016,36 @@ export function Settings() {
             />
           </label>
         </div>
-        {desktopMsg && <p className="mt-3 text-xs text-amber-700">{desktopMsg}</p>}
+        {desktopMsg && <p className="mt-3 text-xs text-warn-ink">{desktopMsg}</p>}
       </section>
 
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
         <div className="mb-4">
-          <h2 className="text-h3 font-semibold text-gray-900">加密目录同步</h2>
-          <p className="mt-1 text-xs text-gray-500">快照使用 AES-256-GCM 加密；同步前自动备份本地数据库</p>
+          <h2 className="text-h3 font-semibold text-ink">加密目录同步</h2>
+          <p className="mt-1 text-xs text-ink-muted">快照使用 AES-256-GCM 加密；同步前自动备份本地数据库</p>
         </div>
         <div className="space-y-3">
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-ink-muted">
             同步目录
             <div className="mt-1 flex gap-2">
               <input
                 value={localSettings.syncFolder}
                 readOnly
                 placeholder="选择 OneDrive、坚果云或 Syncthing 中的目录"
-                className="min-w-0 flex-1 rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900"
+                className="min-w-0 flex-1 rounded-md border border-line-strong bg-sunken px-3 py-2 text-sm text-ink"
               />
               <button
                 type="button"
                 onClick={() => void handlePickSyncFolder()}
                 disabled={syncBusy}
-                className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-50"
+                className="rounded-md border border-line-strong bg-surface px-3 py-2 text-sm font-medium text-ink-muted disabled:opacity-50"
               >
                 选择目录
               </button>
             </div>
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-sm font-medium text-gray-700">
+            <label className="text-sm font-medium text-ink-muted">
               同步密码
               <input
                 type="password"
@@ -1053,64 +1053,64 @@ export function Settings() {
                 value={localSettings.syncPassword}
                 onChange={event => updateField('syncPassword', event.target.value)}
                 placeholder="至少 8 个字符"
-                className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+                className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
               />
             </label>
-            <label className="text-sm font-medium text-gray-700">
+            <label className="text-sm font-medium text-ink-muted">
               当前设备名称
               <input
                 value={localSettings.syncDeviceId}
                 onChange={event => updateField('syncDeviceId', event.target.value.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48))}
                 placeholder="例如 office-pc"
-                className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+                className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
               />
             </label>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3">
-            <p className="text-xs text-gray-500">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-soft pt-3">
+            <p className="text-xs text-ink-muted">
               {localSettings.lastSyncAt ? `上次同步：${new Date(localSettings.lastSyncAt).toLocaleString('zh-CN')}` : '尚未同步'}
             </p>
             <button
               type="button"
               onClick={() => void handleSync()}
               disabled={syncBusy || !sqliteReady}
-              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+              className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
             >
               {syncBusy ? '同步中…' : '立即同步'}
             </button>
           </div>
-          {syncMsg && <p className="text-xs leading-5 text-gray-600">{syncMsg}</p>}
-          <p className="text-[11px] leading-5 text-gray-400">密码只保存在当前设备，不写入快照；忘记密码后无法读取已有同步文件。</p>
+          {syncMsg && <p className="text-xs leading-5 text-ink-muted">{syncMsg}</p>}
+          <p className="text-[11px] leading-5 text-ink-faint">密码只保存在当前设备，不写入快照；忘记密码后无法读取已有同步文件。</p>
         </div>
       </section>
 
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
         <div className="mb-4">
-          <h2 className="text-h3 font-semibold text-gray-900">数据源状态</h2>
-          <p className="mt-1 text-xs text-gray-500">所有数据源先标准化，再进入同一套本地分类和去重流程</p>
+          <h2 className="text-h3 font-semibold text-ink">数据源状态</h2>
+          <p className="mt-1 text-xs text-ink-muted">所有数据源先标准化，再进入同一套本地分类和去重流程</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           {activitySources.map(source => (
-            <div key={source.id} className="border-l-3 border-gray-200 bg-gray-50/60 px-3 py-3">
+            <div key={source.id} className="border-l-3 border-line bg-sunken px-3 py-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-gray-900">{source.label}</p>
-                <span className={`text-[11px] font-medium ${source.available ? 'text-emerald-700' : 'text-amber-700'}`}>
+                <p className="text-sm font-medium text-ink">{source.label}</p>
+                <span className={`text-[11px] font-medium ${source.available ? 'text-ok-ink' : 'text-warn-ink'}`}>
                   {source.available ? '可用' : '受限'}
                 </span>
               </div>
-              <p className="mt-2 text-xs leading-5 text-gray-600">{source.detail}</p>
-              <p className="mt-1 text-[11px] leading-5 text-gray-400">{source.privacy}</p>
+              <p className="mt-2 text-xs leading-5 text-ink-muted">{source.detail}</p>
+              <p className="mt-1 text-[11px] leading-5 text-ink-faint">{source.privacy}</p>
             </div>
           ))}
-          {activitySources.length === 0 && <p className="text-xs text-gray-500">请在桌面版中查看数据源能力。</p>}
+          {activitySources.length === 0 && <p className="text-xs text-ink-muted">请在桌面版中查看数据源能力。</p>}
         </div>
       </section>
 
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-h3 font-semibold text-gray-900">本地 MCP</h2>
-            <p className="mt-1 text-xs text-gray-500">按需由 MCP 客户端启动，只提供只读查询工具</p>
+            <h2 className="text-h3 font-semibold text-ink">本地 MCP</h2>
+            <p className="mt-1 text-xs text-ink-muted">按需由 MCP 客户端启动，只提供只读查询工具</p>
           </div>
           <button
             type="button"
@@ -1120,27 +1120,27 @@ export function Settings() {
               void navigator.clipboard.writeText(JSON.stringify(config, null, 2))
             }}
             disabled={!mcpInfo}
-            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 disabled:opacity-50"
+            className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted disabled:opacity-50"
           >
             复制配置
           </button>
         </div>
         {mcpInfo ? (
-          <div className="space-y-2 text-xs text-gray-600">
-            <p className="break-all"><span className="text-gray-400">程序：</span>{mcpInfo.executable}</p>
-            <p className="break-all"><span className="text-gray-400">数据库：</span>{mcpInfo.databasePath}</p>
+          <div className="space-y-2 text-xs text-ink-muted">
+            <p className="break-all"><span className="text-ink-faint">程序：</span>{mcpInfo.executable}</p>
+            <p className="break-all"><span className="text-ink-faint">数据库：</span>{mcpInfo.databasePath}</p>
             <div className="flex flex-wrap gap-1.5 pt-1">
-              {mcpInfo.tools.map(tool => <code key={tool} className="bg-gray-100 px-2 py-1 text-[11px] text-gray-700">{tool}</code>)}
+              {mcpInfo.tools.map(tool => <code key={tool} className="bg-sunken px-2 py-1 text-[11px] text-ink-muted">{tool}</code>)}
             </div>
           </div>
-        ) : <p className="text-xs text-gray-500">请在桌面版中读取 MCP 配置。</p>}
+        ) : <p className="text-xs text-ink-muted">请在桌面版中读取 MCP 配置。</p>}
       </section>
 
-      <section className="rounded-xl border border-gray-200/60 bg-white p-5 shadow-card">
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-h3 font-semibold text-gray-900">本地只读 API</h2>
-            <p className="mt-1 text-xs text-gray-500">仅监听本机回环地址，所有端点均需访问令牌</p>
+            <h2 className="text-h3 font-semibold text-ink">本地只读 API</h2>
+            <p className="mt-1 text-xs text-ink-muted">仅监听本机回环地址，所有端点均需访问令牌</p>
           </div>
           <input
             type="checkbox"
@@ -1158,7 +1158,7 @@ export function Settings() {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
-          <label className="text-sm font-medium text-gray-700">
+          <label className="text-sm font-medium text-ink-muted">
             端口
             <input
               type="number"
@@ -1167,10 +1167,10 @@ export function Settings() {
               value={localSettings.localApiPort}
               onChange={event => updateField('localApiPort', Math.min(65535, Math.max(1024, Number(event.target.value) || 5610)))}
               disabled={!localSettings.localApiEnabled}
-              className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 disabled:bg-gray-50"
+              className="mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink disabled:bg-sunken"
             />
           </label>
-          <label className="text-sm font-medium text-gray-700">
+          <label className="text-sm font-medium text-ink-muted">
             访问令牌
             <div className="mt-1 flex flex-col gap-2 sm:flex-row">
               <input
@@ -1178,14 +1178,14 @@ export function Settings() {
                 value={localSettings.localApiToken}
                 onChange={event => updateField('localApiToken', event.target.value)}
                 disabled={!localSettings.localApiEnabled}
-                className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-xs text-gray-900 disabled:bg-gray-50"
+                className="min-w-0 flex-1 rounded-md border border-line-strong bg-surface px-3 py-2 font-mono text-xs text-ink disabled:bg-sunken"
               />
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => updateField('localApiToken', generateLocalApiToken())}
                   disabled={!localSettings.localApiEnabled}
-                  className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 disabled:opacity-50 sm:flex-none"
+                  className="flex-1 rounded-md border border-line-strong bg-surface px-3 py-2 text-xs font-medium text-ink-muted disabled:opacity-50 sm:flex-none"
                 >
                   重新生成
                 </button>
@@ -1193,7 +1193,7 @@ export function Settings() {
                   type="button"
                   onClick={() => void navigator.clipboard.writeText(localSettings.localApiToken)}
                   disabled={!localSettings.localApiToken}
-                  className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 disabled:opacity-50 sm:flex-none"
+                  className="flex-1 rounded-md border border-line-strong bg-surface px-3 py-2 text-xs font-medium text-ink-muted disabled:opacity-50 sm:flex-none"
                 >
                   复制
                 </button>
@@ -1202,7 +1202,7 @@ export function Settings() {
           </label>
         </div>
 
-        <div className="mt-4 border-t border-gray-200 pt-3 text-xs text-gray-500">
+        <div className="mt-4 border-t border-line pt-3 text-xs text-ink-muted">
           <p>状态：{localApiStatus?.running ? `运行于 127.0.0.1:${localApiStatus.port}` : '未运行'}</p>
           <p className="mt-1 font-mono">GET /health · /v1/activities · /v1/summary</p>
         </div>
@@ -1210,9 +1210,9 @@ export function Settings() {
 
       {/* P1优化: 保存按钮 - 固定底栏风格 */}
       {hasUnsavedChanges && (
-        <div className="sticky bottom-16 z-20 rounded-lg border border-brand-200 bg-brand-50 p-3 shadow-card">
+        <div className="sticky bottom-16 z-20 rounded-lg border border-accent bg-accent-soft p-3 shadow-card">
           <div className="flex items-center justify-between gap-4">
-            <span className="text-sm text-brand-800">有未保存的更改</span>
+            <span className="text-sm text-accent-ink">有未保存的更改</span>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -1220,14 +1220,14 @@ export function Settings() {
                   setLocalSettings(settings)
                   setHasUnsavedChanges(false)
                 }}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm font-medium text-ink-muted hover:bg-sunken"
               >
                 放弃
               </button>
               <button
                 type="button"
                 onClick={handleSave}
-                className="rounded-md bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+                className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover transition-colors"
               >
                 保存更改
               </button>

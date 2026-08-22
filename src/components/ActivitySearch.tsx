@@ -83,10 +83,10 @@ export function ActivitySearch({ activities }: ActivitySearchProps) {
     <div className="mx-auto w-full max-w-5xl">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-h2 font-semibold text-gray-900">活动回溯</h1>
-          <p className="mt-1 text-sm text-gray-500">{source === 'sqlite' ? '本地 SQLite' : '当前会话'} · {results.length} 条结果</p>
+          <h1 className="text-h2 font-semibold text-ink">活动回溯</h1>
+          <p className="mt-1 text-sm text-ink-muted">{source === 'sqlite' ? '本地 SQLite' : '当前会话'} · {results.length} 条结果</p>
         </div>
-        {parsed.rangeLabel && <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">{parsed.rangeLabel}</span>}
+        {parsed.rangeLabel && <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent-ink">{parsed.rangeLabel}</span>}
       </div>
 
       <form onSubmit={submit} className="mb-6 flex gap-2">
@@ -96,33 +96,38 @@ export function ActivitySearch({ activities }: ActivitySearchProps) {
           onChange={event => setInput(event.target.value)}
           placeholder="搜索昨天处理过的内容"
           aria-label="搜索本地活动"
-          className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-100"
+          className="min-w-0 flex-1 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent-soft"
         />
-        <button type="submit" className="shrink-0 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">
+        <button type="submit" className="shrink-0 rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:bg-accent-hover">
           搜索
         </button>
       </form>
 
-      <div className="divide-y divide-gray-200 border-y border-gray-200">
-        {loading && <p className="py-8 text-center text-sm text-gray-500">正在检索…</p>}
-        {!loading && results.length === 0 && <p className="py-8 text-center text-sm text-gray-500">没有匹配的本地活动</p>}
+      <div className="divide-y divide-line border-y border-line">
+        {loading && <p className="py-8 text-center text-sm text-ink-muted">正在检索…</p>}
+        {!loading && results.length === 0 && <p className="py-8 text-center text-sm text-ink-muted">没有匹配的本地活动</p>}
         {!loading && results.map(activity => {
           const visual = categoryVisual(activity.category)
           return (
             <article key={activity.id} className="grid gap-2 py-4 sm:grid-cols-[9rem_minmax(0,1fr)]">
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-ink-muted">
                 <p>{new Date(activity.timestamp).toLocaleDateString('zh-CN')}</p>
                 <p className="mt-0.5">{new Date(activity.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</p>
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${visual.badge}`}>{visual.label}</span>
-                  <span className="truncate text-sm font-medium text-gray-900">{activity.app}</span>
+                  <span
+                    className="rounded-full px-2 py-0.5 text-xs font-medium"
+                    style={{ backgroundColor: visual.soft, color: visual.color }}
+                  >
+                    {visual.label}
+                  </span>
+                  <span className="truncate text-sm font-medium text-ink">{activity.app}</span>
                 </div>
-                <p className="mt-1 break-words text-sm text-gray-700">{activity.title || activity.description}</p>
-                {activity.title && activity.description !== activity.title && <p className="mt-1 break-words text-xs leading-5 text-gray-500">{activity.description}</p>}
+                <p className="mt-1 break-words text-sm text-ink-muted">{activity.title || activity.description}</p>
+                {activity.title && activity.description !== activity.title && <p className="mt-1 break-words text-xs leading-5 text-ink-muted">{activity.description}</p>}
                 {(activity.browserDomain || activity.ideProject) && (
-                  <p className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
+                  <p className="mt-2 flex flex-wrap gap-2 text-xs text-ink-muted">
                     {activity.browserDomain && <span>域名：{activity.browserDomain}</span>}
                     {activity.ideProject && <span>项目：{activity.ideProject}</span>}
                   </p>
