@@ -25,6 +25,7 @@ import {
   type ReportHistoryItem,
 } from '../utils/reportHistory'
 import { createSyncDeviceId, resolveSyncDeviceId } from '../utils/syncDeviceId'
+import { recordDiagnostic } from '../utils/diagnostics'
 import { generateLocalDailyReport } from '../utils/localReport'
 import { getTemplateDescription, loadCustomTemplates } from '../utils/templates'
 import { createDemoWeek, isDemoActivity } from '../utils/demoData'
@@ -330,6 +331,23 @@ function hasStoredActivitiesSnapshot(): boolean {
   }
 }
 
+function saveActivitiesSnapshot(activities: Activity[]): boolean {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(activities))
+    return true
+  } catch {
+    const withoutScreenshots = activities.map(({ screenshotBase64: _screenshot, ...activity }) => activity)
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(withoutScreenshots))
+      recordDiagnostic('activity-storage', 'localStorage quota exceeded; saved activity metadata without screenshots', 'warning')
+      return true
+    } catch (fallbackError) {
+      recordDiagnostic('activity-storage', fallbackError, 'error')
+      return false
+    }
+  }
+}
+
 function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
@@ -424,7 +442,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(saveTimerRef.current)
     }
     saveTimerRef.current = window.setTimeout(() => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(activitiesRef.current))
+      saveActivitiesSnapshot(activitiesRef.current)
       saveTimerRef.current = null
     }, 500)
   }, [activities])
@@ -434,7 +452,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     return () => {
       if (saveTimerRef.current !== null) {
         window.clearTimeout(saveTimerRef.current)
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(activitiesRef.current))
+        saveActivitiesSnapshot(activitiesRef.current)
       }
     }
   }, [])
