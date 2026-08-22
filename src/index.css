@@ -13,6 +13,9 @@
   --color-brand-800: #115e59;
   --color-brand-900: #134e4a;
 
+  /* 卡片/弹窗表面色（bg-surface 等 32 处引用） */
+  --color-surface: #ffffff;
+
   /* P1优化: 字号层级系统 - 替代原来的text-sm/text-base单一体系 */
   --text-h1: 1.875rem;    /* 30px - 页面主标题 */
   --text-h2: 1.5rem;      /* 24px - 区块标题 */
