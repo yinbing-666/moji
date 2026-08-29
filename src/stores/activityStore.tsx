@@ -21,6 +21,8 @@ import {
   hasStoredReportHistory,
   loadReportHistory,
   removeReportHistoryItem,
+  updateReportHistoryItem,
+  revertReportHistoryItem,
   saveReportHistory,
   type ReportHistoryItem,
 } from '../utils/reportHistory'
@@ -128,6 +130,10 @@ interface ActivityStore {
   viewReport: (item: import('../utils/reportHistory').ReportHistoryItem) => void
   /** 删除一条报告历史 */
   deleteReport: (id: string) => void
+  /** 编辑报告内容并保存到历史 */
+  updateReport: (history: import('../utils/reportHistory').ReportHistoryItem[], id: string, content: string) => void
+  /** 还原被编辑的报告到原始内容 */
+  revertReport: (id: string) => void
   connectionTestResult: { ok: boolean; message: string } | null
   testAiConnection: (config?: Pick<Settings, 'apiKey' | 'baseUrl' | 'textModel'>) => Promise<void>
   /* P1优化: 新增数据导入导出方法 */
@@ -820,6 +826,20 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const updateReport = useCallback((history: ReportHistoryItem[], id: string, content: string) => {
+    const next = updateReportHistoryItem(history, id, content)
+    setReportHistory(next)
+    setLastReport(cur => (cur?.id === id ? next.find(x => x.id === id) ?? null : cur))
+  }, [])
+
+  const revertReport = useCallback((id: string) => {
+    setReportHistory(prev => {
+      const next = revertReportHistoryItem(prev, id)
+      setLastReport(cur => (cur?.id === id ? next.find(x => x.id === id) ?? null : cur))
+      return next
+    })
+  }, [])
+
   /* P1优化: 导入JSON数据 */
   const importActivitiesFromJson = useCallback(async (data: unknown): Promise<number> => {
     const { parseImport, mergeImport, normalizeImportItem } = await import('../utils/importData')
@@ -884,7 +904,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       addActivity, importActivity, updateActivity, updateActivitiesCategory, removeActivity, clearActivities,
       reloadFromSqlite, updateSettings: updateSettingsCallback, setIsAnalyzing, syncFromAw,
       generateDailyReport, isGeneratingReport, connectionTestResult,
-      lastReport, reportHistory, viewReport, deleteReport,
+      lastReport, reportHistory, viewReport, deleteReport, updateReport, revertReport,
       testAiConnection: testAiConnectionCallback,
       importActivitiesFromJson, exportActivitiesAsJson: exportActivitiesAsJsonCallback,
       clearAllActivities, loadDemoWeek, removeDemoData,

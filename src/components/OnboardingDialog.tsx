@@ -55,18 +55,23 @@ export function OnboardingDialog({ onComplete }: OnboardingDialogProps) {
         <div className="min-h-72 px-6 py-5">
           {step === 0 && (
             <div className="space-y-5">
-              <p className="text-sm leading-6 text-ink-muted">墨记读取应用名、窗口标题和可选的界面文本，用于生成本地时间线。默认不截图，也不会把数据上传到墨记服务器。</p>
-              <div className="divide-y divide-line-soft border-y border-line">
+              <p className="text-sm leading-6 text-ink-muted">墨记读取应用名、窗口标题和可选的界面文本,用于生成本地时间线。默认不截图,也不会把数据上传到墨记服务器。</p>
+              <div className="divide-y divide-line-soft overflow-hidden rounded-md border-y border-line bg-sunken">
                 {[
-                  ['默认采集', '应用名、窗口标题、活动时长'],
-                  ['默认不采集', '完整网址、密码框、屏幕录制和音频'],
-                  ['数据位置', '活动和设置保存在本机'],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex gap-4 py-3 text-sm">
-                    <span className="w-24 shrink-0 font-medium text-ink">{label}</span>
-                    <span className="text-ink-muted">{value}</span>
-                  </div>
-                ))}
+                  '采集层·只读文字,不看画面:枚举窗口进程名/标题,UI Automation 只读控件文本;默认不截屏不OCR不录屏不录音;密码框自动跳过。',
+                  '处理层·默认不出本机,是否用AI你说了算:默认本地关键词规则分类不上云;启用LLM只发允许的进程名/可执行文件名/窗口标题/窗口内文本到自配OpenAI兼容接口;不发完整路径与图像。',
+                  '存储层·存在本机,导出可控:活动与设置存本机localStorage与SQLite;JSON导入导出、SQLite备份恢复;脱敏诊断导出不含活动记录/窗口标题/截图/API配置值。',
+                ].map(narrative => {
+                  const [layer, ...descriptionParts] = narrative.split('·')
+                  const description = descriptionParts.join('·')
+
+                  return (
+                    <div key={layer} className="px-4 py-3">
+                      <p className="text-sm font-medium text-ink">{layer}·{description.split(':')[0]}</p>
+                      <p className="mt-1 text-xs leading-5 text-ink-muted">{description.slice(description.indexOf(':') + 1)}</p>
+                    </div>
+                  )
+                })}
               </div>
               <label className="flex cursor-pointer items-start gap-3 rounded-md bg-sunken px-4 py-3">
                 <input type="checkbox" checked={excludeCommunication} onChange={event => setExcludeCommunication(event.target.checked)} className="mt-0.5 h-4 w-4 accent-brand-600" />

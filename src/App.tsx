@@ -303,7 +303,7 @@ function AppShell() {
         </div>
 
         {/* 导航：表面色凸起表示选中 */}
-        <nav className="flex-1 space-y-1 px-2 sm:px-3">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 sm:px-3">
           {NAV_ITEMS.map(item => (
             <button
               key={item.page}
@@ -328,7 +328,7 @@ function AppShell() {
         </nav>
 
         {/* 底部：采集状态 + 主控开关 */}
-        <div className="space-y-3 border-t border-line px-2 pb-5 pt-4 sm:px-4">
+        <div className="shrink-0 space-y-3 border-t border-line px-2 pb-5 pt-4 sm:px-4">
           <div className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-2">
               <span className={`h-2 w-2 rounded-full ${statusActive ? 'bg-accent animate-pulse-dot' : 'bg-line-strong'}`} />

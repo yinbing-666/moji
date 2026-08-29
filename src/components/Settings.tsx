@@ -674,6 +674,11 @@ export function Settings() {
       {/* 隐私排除 */}
       <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
         <h2 className="text-h3 font-semibold text-ink mb-4">隐私排除</h2>
+        <div className="mb-4 space-y-1 text-xs text-ink-faint">
+          <p>采集层 · 只读文字，不看画面：枚举窗口进程名与标题，UI Automation 只读读取窗口内控件文本；默认不截屏、不 OCR、不录屏、不录音；密码框等敏感控件自动跳过。</p>
+          <p>处理层 · 默认不出本机，是否用 AI 你说了算：默认使用本地关键词规则分类，完全不上云；启用 LLM 时，只把允许的进程名、可执行文件名、窗口标题与窗口内文本发送到你自配的 OpenAI 兼容接口；不发送完整本机路径，不发送图像。</p>
+          <p>存储层 · 存在本机，导出可控：活动记录与设置保存在本机 localStorage 与 SQLite，支持 JSON 导入导出、SQLite 备份恢复；脱敏诊断导出不含活动记录、窗口标题、截图或 API 配置值。</p>
+        </div>
 
         <fieldset className="mb-4">
           <label htmlFor="excluded-keywords" className="block text-sm font-medium text-ink-muted mb-1">

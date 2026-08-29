@@ -52,6 +52,22 @@
 - [x] 更新 README、API／MCP 配置说明、发布清单和平台能力表。
 - [x] 完成前后端测试和 Windows 真实桌面验收。
 
+## 已完成：竞品分析与 P0 方案（2026-08-29）
+
+- [x] 小黑日报助手竞品差距分析（opus-5 review），报告见 `docs/review-xiaohei-gap-20260829.md`。结论：墨记差距在首日价值感与表达力，不在采集能力；不学截图/OCR，守住 UIA 可解释路线。
+- [x] P0 五项实现方案文档（5 个 subagent 并行调 opus-5 生成，已逐个验收）：`docs/plans/p0-1-heatmap-spec.md`（时段热力图）、`p0-2-report-prompt-spec.md`（报告重点提炼 prompt）、`p0-3-narrative-card-spec.md`（今日叙事卡）、`p0-4-report-edit-spec.md`（报告可编辑再导出）、`p0-5-privacy-copy-spec.md`（隐私三层叙事文案）。均为设计文档，代码未动。
+- [x] **窄窗口侧边栏溢出修复**（P0-2/3/4/5 subagent 实现期间插队修复）：窗口变矮时侧边栏底部控制区（停止采集/立即采集一次）被推出视口外截断。根因：`App.tsx` 侧边栏 `nav` 有 `flex-1` 无 `min-h-0`，高度不足时不收缩、把底部按钮区顶出 `h-screen` 容器。修复：nav 加 `min-h-0 overflow-y-auto`（高度不足时导航自身滚动），底部控制区加 `shrink-0`（常驻可见）。浏览器 874→380px 高度实测按钮始终完整可见，回溯页 400~900px 宽度带长数据零横向溢出；typecheck + test:features 11/11 通过。
+
+## 已完成：P0 四项落地（2026-08-29，多模型协作实现）
+
+> 实现过程：opus-5 池枯竭后经 gpt-5.6-sol 迭代至 glm-5.3 收尾；本站大请求（>20KB）会 502/503，采用「小 prompt（≤10KB）分块输出 + 本地拼装 patch」模式完成。
+
+- [x] **P0-2 报告 prompt 重点提炼**：`ai.ts` 重构 generateReport——新增 REPORT_SYSTEM/DAILY_STRUCT/WEEKLY_STRUCT/buildReportPrompt/AwReportStats，日报强制「今日3个重点+产出+阻塞+数据依据」结构，temperature 0.2，空活动直接返回不调模型。
+- [x] **P0-3 今日叙事卡**：新增 `narrative.ts`（activeRange/longestFocus/mainThread 计算，AW 并集+UIA 差值重建≤5min）、`useNarrativeCard.ts`（本地模板即时+可选 LLM 增强≤40字/3s 超时降级/同日缓存，走 Rust `chat_completions` 代理）、`NarrativeCard.tsx`（语义 token 卡片），集成于仪表盘统计卡前。
+- [x] **P0-4 报告可编辑再导出**：`reportHistory.ts` 新增 edited/editedAt/originContent 字段与 updateReportHistoryItem/revertReportHistoryItem（兼容旧数据）；`activityStore.tsx` 新增 updateReport/revertReport 动作；`ReportView.tsx` 工具栏编辑/保存/取消按钮组+textarea 编辑态+历史「已编辑」badge+一键还原。
+- [x] **P0-5 隐私三层叙事**：`OnboardingDialog.tsx` 首启隐私确认改三层卡片（采集层·只读文字不看画面/处理层·本地规则或你的LLM/存储层·SQLite本地+脱敏导出）；`Settings.tsx` 隐私区加三层说明；新增 `docs/privacy-narrative.md`（FAQ 5 条）。
+- [x] **验证**：npm run typecheck ✅ / test:features 11/11 ✅ / npm run build ✅（2.93s）；浏览器实机验收：叙事卡三行信息渲染正确、报告编辑→保存→已编辑 badge→还原全链路通过、控制台无错误。
+
 ## 待办：发布
 
 - [x] 本地提交：整理 v0.2.0 改动并提交到 `master`（`8c0d516`）。

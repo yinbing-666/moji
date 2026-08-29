@@ -47,3 +47,12 @@ IDEA.md
 
 # 临时验证产物（截图/脚本）
 tmp/
+
+# 本地打包产物与运行残留（不入库）
+/xiaohei-daily.exe
+/moji-mcp.exe
+/uninstall.exe
+/aw-server-rust.exe
+/activitywatch/
+/THIRD_PARTY_NOTICES/
+/Temp/

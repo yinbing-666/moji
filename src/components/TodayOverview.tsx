@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { Activity } from '../stores/activityStore'
 import { categoryVisual } from '../utils/categoryStyles'
 import { formatDuration } from '../utils/format'
+import { NarrativeCard } from './NarrativeCard'
 
 function isToday(iso: string) {
   return new Date(iso).toDateString() === new Date().toDateString()
@@ -86,6 +87,7 @@ export function TodayOverview({ activities }: TodayOverviewProps) {
   /* 统计卡：三张同一容器，层级只由数值字号与颜色承载；强调色仅给主指标数值本身 */
   return (
     <>
+      <NarrativeCard activities={activities} />
       <section className="mb-6 grid gap-3 sm:grid-cols-3">
         {/* 今日总时长 - 主指标，页面唯一的强调色数值 */}
         <div className="rounded-xl border border-line bg-surface p-5 shadow-card">

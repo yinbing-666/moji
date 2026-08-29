@@ -265,6 +265,127 @@ export async function analyzeWindowText(
   return parseAnalysisContent(content)
 }
 
+/** 统计汇总数据（预期来自 awReport.ts 模块；该模块当前未接入，故在此定义结构类型，字段缺失时 formatStatsBlock 会跳过对应行） */
+export interface AwReportStats {
+  summary: { active_seconds: number; productive_percent: number }
+  categories: Array<{ name: string; seconds: number; percent: number }>
+  apps: Array<{ name: string; percent: number }>
+  focus_analysis?: { longest_focus_seconds: number; avg_focus_seconds: number; interruptions: number; fragmentation: number }
+  comparison?: { active_seconds_delta_percent: number; productive_delta_pp: number; interruptions_delta: number }
+  daily_breakdown?: Array<{ date: string; active_seconds: number }>
+  insights?: string[]
+}
+
+/** 把统计汇总预计算为只读数据块注入 prompt，模型只负责叙述、不自行估算 */
+function formatStatsBlock(s: AwReportStats, period: 'daily' | 'weekly'): string {
+  const h = (sec: number) => (sec / 3600).toFixed(1) + 'h'
+  const lines = [
+    `活跃时长：${h(s.summary.active_seconds)}；生产力占比：${s.summary.productive_percent}%`,
+    `分类分布：${s.categories.map(c => `${c.name} ${h(c.seconds)}(${c.percent}%)`).join('、')}`,
+    `主要应用：${s.apps.slice(0, 5).map(a => `${a.name} ${a.percent}%`).join('、')}`,
+  ]
+  if (s.focus_analysis) {
+    const f = s.focus_analysis
+    lines.push(
+      `专注情况：最长专注 ${h(f.longest_focus_seconds)}；专注段均值 ${h(f.avg_focus_seconds)}；` +
+      `打断 ${f.interruptions} 次；碎片化指数 ${f.fragmentation}（0-1，越高越碎）`
+    )
+  }
+  if (s.comparison) {
+    const c = s.comparison
+    const label = period === 'weekly' ? '较上周' : '较昨日'
+    lines.push(
+      `${label}：活跃时长 ${c.active_seconds_delta_percent >= 0 ? '+' : ''}${c.active_seconds_delta_percent}%；` +
+      `生产力占比 ${c.productive_delta_pp >= 0 ? '+' : ''}${c.productive_delta_pp}pp；` +
+      `打断次数 ${c.interruptions_delta >= 0 ? '+' : ''}${c.interruptions_delta} 次`
+    )
+  }
+  if (period === 'weekly' && s.daily_breakdown) {
+    lines.push(
+      `每日活跃：${s.daily_breakdown.map(d => `${d.date.slice(5)} ${h(d.active_seconds)}`).join('、')}`
+    )
+  }
+  if (s.insights?.length) {
+    lines.push(`系统洞察（可引用，不可扩写）：${s.insights.join('；')}`)
+  }
+  return lines.join('\n')
+}
+
+const REPORT_SYSTEM = `你是资深工程效能分析师，为工程师生成"重点提炼式"工作汇报。
+你的输出会被直接粘贴到周报/同步工具，因此必须结论先行、可扫读、无寒暄。
+
+硬性规则：
+1. 只使用【活动记录】和【统计数据】中出现的信息，禁止推测、补全或编造任何事实、指标、人名、项目名。
+2. 每个重点必须附证据，证据只能引用记录中真实出现的 app 名、description 片段或时间段。
+3. 合并同类活动，禁止逐条复述时间线，禁止输出按时间排序的节点列表。
+4. 统计数据只能引用【统计数据】块中的字段；该块未提供的指标写"无数据"，不得自行计算或估算。
+5. 记录条数过少或信息不足以支撑判断时，在开头写一行"⚠️ 本次记录有限（共 N 条活动），结论仅供参考"，并如实减少重点数量。
+6. 输出纯 Markdown，不加代码块包裹，不加解释性前后缀。`;
+
+const DAILY_STRUCT = `请严格按以下结构输出：
+
+## 今日 3 个重点
+按重要性排序，最多 3 条、最少按实际可支撑的数量输出（不足 3 条时直接少写，并在末尾补一句说明原因）。每条格式：
+
+### 1. <一句话结论式标题，含具体对象>
+- **做了什么**：1-2 句，动词开头，落到具体模块/文件/议题
+- **为什么重要**：对项目推进、阻塞解除或决策的实际影响
+- **证据**：引用记录中的 app / description 片段 / 时段，如 \`VSCode · auth 模块重构 · 09:20-11:40\`
+
+## 产出
+交付物与结果清单，3-6 条，按主题合并同类活动。每条写"做成了什么"而非"花了多久"。无明确产出时写"本日无明确交付物，主要为 <主导类别> 类投入"。
+
+## 阻塞
+未完成项、遇到的问题、待外部输入的事项，每条注明卡点与下一步动作。确无阻塞时只写一行："无明显阻塞。"，不要凑数。
+
+## 数据依据
+基于【统计数据】的客观陈述，不加主观评价：
+- 时间分布：各分类时长与占比
+- 专注情况：最长专注时长、打断次数、碎片化程度
+- 与上期对比：变化方向与幅度
+`;
+
+const WEEKLY_STRUCT = `请严格按以下结构输出：
+
+## 本周 3-5 个重点
+按重要性排序，跨天合并为主题级重点（同一主线的多日工作合成一条）。每条格式：
+
+### 1. <一句话结论式标题>
+- **做了什么**：跨天推进过程，1-2 句
+- **为什么重要**：对本周目标的贡献
+- **证据**：引用涉及的天数、主要 app 与 description 片段，如 \`周一至周三 · VSCode · 支付回调重构\`
+
+## 产出
+本周交付物清单，按主题聚合，标注完成/进行中。
+
+## 阻塞
+本周未解决问题与遗留项，注明已持续天数与下一步。确无阻塞写"无明显阻塞。"
+
+## 本周趋势
+- 累计活跃时长与高产出时段分布
+- 分类结构变化（哪类占比上升/下降）
+- 专注质量变化（专注时长、打断频次趋势）
+- 与上周对比的关键差异，仅陈述【统计数据】中 comparison 字段支持的结论
+
+## 数据依据
+逐项列出统计口径与数值，含累计值与环比。
+`;
+
+function buildReportPrompt(opts: {
+  period: 'daily' | 'weekly';
+  activities: string;
+  statsBlock: string;
+  templateDesc?: string;
+}) {
+  const struct = opts.period === 'weekly' ? WEEKLY_STRUCT : DAILY_STRUCT;
+  return [
+    struct,
+    opts.templateDesc ? `\n补充风格要求（不得覆盖上述结构与硬性规则）：\n${opts.templateDesc}` : '',
+    `\n【统计数据】\n${opts.statsBlock || '（未提供统计数据，"数据依据"章节请写：本次未接入统计数据。）'}`,
+    `\n【活动记录】（共 ${opts.activities.split('\n').length} 条）\n${opts.activities}`,
+  ].join('\n');
+}
+
 export async function generateReport(
   activities: Array<{ timestamp: string; description: string; category: string; app_name: string }>,
   type: 'daily' | 'weekly' | 'monthly',
@@ -272,40 +393,39 @@ export async function generateReport(
   baseUrl?: string,
   model?: string,
   templateDesc?: string,
+  stats?: AwReportStats,
 ): Promise<string> {
   const { key, url } = requireAiConfig(apiKey, baseUrl)
   const reportModel = model?.trim()
   if (!reportModel) {
     throw new Error('未配置报告生成模型')
   }
+  // 记录为空时不调用模型，直接返回本地兜底文案
+  if (activities.length === 0) {
+    return '本时段无活动记录'
+  }
   const lines = activities.map(a => '[' + a.timestamp + '] ' + a.category + ' | ' + a.app_name + ' | ' + a.description)
   const text = lines.join('\n')
-  const reportName = type === 'daily' ? '日报' : type === 'weekly' ? '周报' : '月报'
-  const templatePrompt = templateDesc?.trim()
+  const period: 'daily' | 'weekly' = type === 'daily' ? 'daily' : 'weekly'
+  const statsBlock = stats ? formatStatsBlock(stats, period) : ''
 
-  // 7月4 版完整 prompt 结构：助手角色 + 模板描述 + 固定要求 + 活动记录
-  const content = [
-    '你是一个严谨的工作复盘助手。请根据下面的活动记录生成中文 Markdown ' + reportName + '。',
-    templatePrompt || '标准日报：结构完整，适合日常同步。',
-    '要求：',
-    '1. 不要编造活动记录里没有的信息。',
-    '2. 合并重复或相近的活动，保留可执行结论。',
-    '3. 如果记录不足，明确说明信息有限。',
-    '4. 输出必须使用 Markdown。',
-    '5. 固定包含这些部分：概览、主要工作、沟通协作、遇到的问题、明日建议、时间线摘要。',
-    '6. 时间线摘要按时间顺序列出关键节点，不要逐条机械复述。',
-    '',
-    '活动记录：',
-    text,
-  ].join('\n')
+  const content = buildReportPrompt({
+    period,
+    activities: text,
+    statsBlock,
+    templateDesc: templateDesc?.trim(),
+  })
 
   const result = await chatCompletions(
     key,
     url,
     reportModel,
-    [{ role: 'user', content }],
-    2000,
-    0.3,
+    [
+      { role: 'system', content: REPORT_SYSTEM },
+      { role: 'user', content },
+    ],
+    period === 'daily' ? 1600 : 2600,
+    0.2,
   )
   return result
 }

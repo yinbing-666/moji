@@ -14,6 +14,9 @@ export interface ReportHistoryItem {
   type: ReportType
   template: string
   content: string
+  originContent?: string
+  edited?: boolean
+  editedAt?: number
 }
 
 const REPORT_HISTORY_KEY = 'moji-report-history'
@@ -88,6 +91,13 @@ function normalizeHistoryItem(value: unknown): ReportHistoryItem | null {
     return null
   }
 
+  const originContent = typeof item.originContent === 'string' && item.originContent.trim()
+    ? item.originContent
+    : undefined
+  const editedAt = typeof item.editedAt === 'number' && Number.isFinite(item.editedAt)
+    ? item.editedAt
+    : undefined
+
   return {
     id: item.id,
     createdAt: item.createdAt,
@@ -96,6 +106,9 @@ function normalizeHistoryItem(value: unknown): ReportHistoryItem | null {
       ? item.template
       : 'standard',
     content: item.content,
+    edited: item.edited === true,
+    editedAt,
+    originContent,
   }
 }
 
@@ -128,14 +141,22 @@ function syncToSqlite(item: ReportHistoryItem) {
       type: item.type,
       template: item.template,
       content: item.content,
-    }).catch(() => {}),
-  ).catch(() => {})
+    }).catch(error => {
+      console.warn('Failed to save report history to SQLite', error)
+    }),
+  ).catch(error => {
+    console.warn('Failed to load report history SQLite handler', error)
+  })
 }
 
 function deleteFromSqlite(id: string) {
   void import('./db').then(({ dbDeleteReportHistory }) =>
-    dbDeleteReportHistory(id).catch(() => {}),
-  ).catch(() => {})
+    dbDeleteReportHistory(id).catch(error => {
+      console.warn('Failed to delete report history from SQLite', error)
+    }),
+  ).catch(error => {
+    console.warn('Failed to load report history SQLite handler', error)
+  })
 }
 
 export function addReportHistoryItem(
@@ -155,6 +176,58 @@ export function addReportHistoryItem(
   const nextHistory = [nextItem, ...history].slice(0, MAX_REPORT_HISTORY)
   saveReportHistory(nextHistory)
   syncToSqlite(nextItem)
+  return nextHistory
+}
+
+export function updateReportHistoryItem(
+  history: ReportHistoryItem[],
+  id: string,
+  content: string,
+): ReportHistoryItem[] {
+  const item = history.find(historyItem => historyItem.id === id)
+  if (!item) return history
+
+  const editedAt = Date.now()
+  const updatedItem: ReportHistoryItem = {
+    ...item,
+    ...(item.edited
+      ? {}
+      : {
+          originContent: item.content,
+        }),
+    content,
+    edited: true,
+    editedAt,
+  }
+  const nextHistory = history.map(historyItem =>
+    historyItem.id === id ? updatedItem : historyItem,
+  )
+
+  saveReportHistory(nextHistory)
+  syncToSqlite(updatedItem)
+  return nextHistory
+}
+
+export function revertReportHistoryItem(
+  history: ReportHistoryItem[],
+  id: string,
+): ReportHistoryItem[] {
+  const item = history.find(historyItem => historyItem.id === id)
+  if (!item) return history
+
+  const updatedItem: ReportHistoryItem = {
+    ...item,
+    content: item.originContent ?? item.content,
+    edited: undefined,
+    editedAt: undefined,
+    originContent: undefined,
+  }
+  const nextHistory = history.map(historyItem =>
+    historyItem.id === id ? updatedItem : historyItem,
+  )
+
+  saveReportHistory(nextHistory)
+  syncToSqlite(updatedItem)
   return nextHistory
 }
 

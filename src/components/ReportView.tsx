@@ -112,8 +112,12 @@ export function ReportView({ activities }: ReportViewProps) {
     reportHistory,
     viewReport,
     deleteReport,
+    updateReport,
+    revertReport,
   } = useActivityStore()
   const [copied, setCopied] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
   const [reportDate, setReportDate] = useState(todayDateKey)
   const [selectedTemplate, setSelectedTemplate] = useState('standard')
   const [customTemplates, setCustomTemplates] = useState<CustomTemplate[]>(loadCustomTemplates)
@@ -269,6 +273,24 @@ export function ReportView({ activities }: ReportViewProps) {
     const item = reportHistory.find(report => report.id === id)
     if (!item || !window.confirm('确定删除这份报告？删除后无法在历史记录中恢复。')) return
     deleteReport(id)
+  }
+
+  const startEditReport = () => {
+    if (!lastReport) return
+    setDraft(lastReport.content)
+    setEditing(true)
+  }
+
+  const handleCancelReportEdit = () => {
+    setDraft(lastReport?.content ?? '')
+    setEditing(false)
+  }
+
+  const handleSaveReportEdit = () => {
+    if (!lastReport) return
+    updateReport(reportHistory, lastReport.id, draft)
+    setDraft('')
+    setEditing(false)
   }
 
   const reportData = useMemo(() => {
@@ -509,6 +531,32 @@ export function ReportView({ activities }: ReportViewProps) {
               >
                 打印
               </button>
+              {editing ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCancelReportEdit}
+                    className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-danger hover:text-danger-ink"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveReportEdit}
+                    className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-strong"
+                  >
+                    保存
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={startEditReport}
+                  className="rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-accent-ink"
+                >
+                  编辑
+                </button>
+              )}
             </div>
           </div>
           {pdfMsg && <p className="mb-3 break-all text-xs text-ink-muted">{pdfMsg}</p>}
@@ -528,7 +576,15 @@ export function ReportView({ activities }: ReportViewProps) {
           </div>}
           </div>
           <div className="report-content max-h-[36rem] overflow-y-auto p-5">
-            <MarkdownReport content={lastReport.content} />
+            {editing ? (
+              <textarea
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                className="min-h-64 w-full resize-y rounded-md border border-line-strong bg-surface p-3 font-mono text-sm text-ink"
+              />
+            ) : (
+              <MarkdownReport content={lastReport.content} />
+            )}
           </div>
         </section>
       )}
@@ -551,6 +607,11 @@ export function ReportView({ activities }: ReportViewProps) {
                 <span className="shrink-0 rounded-full bg-sunken px-2 py-0.5 text-[10px] font-medium text-ink-muted">
                   {REPORT_TYPE_LABEL[item.type] ?? item.type}
                 </span>
+                {item.edited === true && (
+                  <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-medium text-accent-ink">
+                    已编辑
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => viewReport(item)}
@@ -568,6 +629,16 @@ export function ReportView({ activities }: ReportViewProps) {
                     {' · '}{templateLabel(item.template)}
                   </p>
                 </button>
+                {item.edited === true && (
+                  <button
+                    type="button"
+                    onClick={() => revertReport(item.id)}
+                    className="shrink-0 rounded-md px-2 py-1 text-xs text-ink-faint transition-colors hover:bg-accent-soft hover:text-accent-ink"
+                    title="还原到原始内容"
+                  >
+                    还原
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => handleDeleteReport(item.id)}
