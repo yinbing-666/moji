@@ -1,3 +1,3 @@
 fn main() {
-    xiaohei_daily_lib::mcp::run_stdio();
+    moji_daily_lib::mcp::run_stdio();
 }

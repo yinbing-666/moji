@@ -1,12 +1,12 @@
 [package]
-name = "xiaohei-daily"
+name = "moji-daily"
 version = "0.2.0"
 description = "AI 自动工作日报生成工具"
 edition = "2021"
-default-run = "xiaohei-daily"
+default-run = "moji-daily"
 
 [lib]
-name = "xiaohei_daily_lib"
+name = "moji_daily_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]

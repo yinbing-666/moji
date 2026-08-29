@@ -15,7 +15,7 @@ $tauriConfig = Get-Content -LiteralPath (Join-Path $repoRoot 'src-tauri\tauri.co
 $cargoToml = Get-Content -LiteralPath (Join-Path $repoRoot 'src-tauri\Cargo.toml') -Raw
 $cargoLock = Get-Content -LiteralPath (Join-Path $repoRoot 'src-tauri\Cargo.lock') -Raw
 $cargoMatch = [regex]::Match($cargoToml, '(?ms)^\[package\].*?^version\s*=\s*"([^"]+)"')
-$cargoLockMatch = [regex]::Match($cargoLock, '(?ms)^name\s*=\s*"xiaohei-daily"\s*\r?\nversion\s*=\s*"([^"]+)"')
+$cargoLockMatch = [regex]::Match($cargoLock, '(?ms)^name\s*=\s*"moji-daily"\s*\r?\nversion\s*=\s*"([^"]+)"')
 
 if (-not $cargoMatch.Success -or -not $cargoLockMatch.Success) {
   throw 'Unable to read package versions from Cargo.toml or Cargo.lock'

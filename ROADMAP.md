@@ -68,6 +68,14 @@
 - [x] **P0-5 隐私三层叙事**：`OnboardingDialog.tsx` 首启隐私确认改三层卡片（采集层·只读文字不看画面/处理层·本地规则或你的LLM/存储层·SQLite本地+脱敏导出）；`Settings.tsx` 隐私区加三层说明；新增 `docs/privacy-narrative.md`（FAQ 5 条）。
 - [x] **验证**：npm run typecheck ✅ / test:features 11/11 ✅ / npm run build ✅（2.93s）；浏览器实机验收：叙事卡三行信息渲染正确、报告编辑→保存→已编辑 badge→还原全链路通过、控制台无错误。
 
+## 已完成：工程代号清理（2026-08-29）
+
+- [x] **移除 `xiaohei` 旧代号残留**：全项目 20 处引用改为 `moji`——`Cargo.toml`（crate `moji-daily`/`moji_daily_lib`）、`tauri.conf.json` identifier（`com.xiaohei.daily`→`com.moji.daily`）、`package.json` 与 `package-lock.json`（name）、`main.rs`/`mcp.rs`/`bin/moji-mcp.rs`（库名与数据目录）、`screenshot.rs`（自排除关键字）、`activityStore.tsx`（localStorage key 4 个）、`check-release.ps1`（Cargo.lock 版本匹配正则）。
+- [x] **备份**：改前已备份 9 个源文件到 `D:/Projects_backup/moji-before-rename/`。
+- [x] **残留检查**：`grep -rn xiaohei`（排除 target/node_modules）零命中；`tauri.conf.json`、`package.json`、`package-lock.json` JSON 解析全部通过。
+- [x] **验证全绿**：`cargo check` 通过（1m24s，crate 已识别为 `moji-daily v0.2.0`，零错误）；`npm run typecheck` 通过；`npm run test:features` 11/11 通过。
+- [ ] **待办**：改动尚未 git commit；数据目录因 identifier 变为 `com.moji.daily`，首次启动需从 `AppData/Roaming/com.xiaohei.daily/` 迁移 `moji.db` 与 localStorage 数据。
+
 ## 待办：发布
 
 - [x] 本地提交：整理 v0.2.0 改动并提交到 `master`（`8c0d516`）。

@@ -22,11 +22,11 @@ fn default_database_path() -> Option<PathBuf> {
     if cfg!(target_os = "windows") {
         env::var_os("APPDATA")
             .map(PathBuf::from)
-            .map(|path| path.join("com.xiaohei.daily").join("moji.db"))
+            .map(|path| path.join("com.moji.daily").join("moji.db"))
     } else if cfg!(target_os = "macos") {
         env::var_os("HOME")
             .map(PathBuf::from)
-            .map(|path| path.join("Library/Application Support/com.xiaohei.daily/moji.db"))
+            .map(|path| path.join("Library/Application Support/com.moji.daily/moji.db"))
     } else {
         env::var_os("XDG_DATA_HOME")
             .map(PathBuf::from)
@@ -35,7 +35,7 @@ fn default_database_path() -> Option<PathBuf> {
                     .map(PathBuf::from)
                     .map(|path| path.join(".local/share"))
             })
-            .map(|path| path.join("com.xiaohei.daily").join("moji.db"))
+            .map(|path| path.join("com.moji.daily").join("moji.db"))
     }
 }
 

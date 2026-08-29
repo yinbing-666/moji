@@ -39,8 +39,8 @@ const DEFAULT_EXCLUDED_KEYWORDS: &[&str] = &[
     "authenticator",
     "bank",
     "wallet",
-    "xiaohei_daily",
-    "xiaohei-daily.exe",
+    "moji_daily",
+    "moji-daily.exe",
     "墨记",
 ];
 

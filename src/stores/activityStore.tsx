@@ -181,11 +181,11 @@ const DEFAULT_SETTINGS: Settings = {
 
 const LEGACY_DEFAULT_EXCLUDED_KEYWORDS = ['微信', 'WeChat', 'QQ', 'Mail', '邮箱', 'Password', 'Token', 'Bank']
 
-const STORAGE_KEY = 'xiaohei-activities'
-const SETTINGS_KEY = 'xiaohei-settings'
+const STORAGE_KEY = 'moji-activities'
+const SETTINGS_KEY = 'moji-settings'
 // API Key 单独存储，避免与普通设置混在一起被整体序列化（后续可迁移到 Tauri 安全存储）
-const SETTINGS_KEY_API = 'xiaohei-settings-api-key'
-const SETTINGS_KEY_SYNC_PASSWORD = 'xiaohei-settings-sync-password'
+const SETTINGS_KEY_API = 'moji-settings-api-key'
+const SETTINGS_KEY_SYNC_PASSWORD = 'moji-settings-sync-password'
 
 function createActivityId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
