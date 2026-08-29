@@ -80,7 +80,7 @@ export function ActivitySearch({ activities }: ActivitySearchProps) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="mx-auto w-full max-w-5xl px-8 py-8">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-h2 font-semibold text-ink">活动回溯</h1>
