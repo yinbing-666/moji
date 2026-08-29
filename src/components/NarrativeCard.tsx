@@ -35,23 +35,36 @@ export function NarrativeCard({ activities }: NarrativeCardProps) {
         )}
       </div>
       <p className="mt-2 text-sm leading-6 text-ink">{text}</p>
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
+      <div className="mt-3 space-y-1.5 text-xs">
         {summary.activeRange && (
-          <span>
-            活跃区间 {formatClock(summary.activeRange.start)}–{formatClock(summary.activeRange.end)}
-            （约 {formatDuration(summary.activeRange.totalSeconds)}）
-          </span>
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="shrink-0 rounded bg-sunken px-1.5 py-0.5 font-medium text-ink-muted">活跃区间</span>
+            <span className="font-medium tabular-nums text-ink">
+              {formatClock(summary.activeRange.start)}–{formatClock(summary.activeRange.end)}
+            </span>
+            <span className="text-ink-faint">约 {formatDuration(summary.activeRange.totalSeconds)}</span>
+          </div>
         )}
         {summary.longestFocus && (
-          <span>
-            最长专注 {summary.longestFocus.app} {formatDuration(summary.longestFocus.seconds)}
-          </span>
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="shrink-0 rounded bg-sunken px-1.5 py-0.5 font-medium text-ink-muted">最长专注</span>
+            <span className="font-medium text-ink">{summary.longestFocus.app}</span>
+            <span className="text-ink-faint">{formatDuration(summary.longestFocus.seconds)}</span>
+          </div>
         )}
         {summary.mainThread && (
-          <span>
-            今日主线 {categoryVisual(summary.mainThread.category).label}（{summary.mainThread.app}，
-            占比 {Math.round(summary.mainThread.share * 100)}%）
-          </span>
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span
+              className="shrink-0 rounded px-1.5 py-0.5 font-medium"
+              style={{ backgroundColor: categoryVisual(summary.mainThread.category).soft, color: categoryVisual(summary.mainThread.category).color }}
+            >
+              今日主线
+            </span>
+            <span className="font-medium text-ink">{categoryVisual(summary.mainThread.category).label}</span>
+            <span className="text-ink-faint">
+              {summary.mainThread.app} · 占比 {Math.round(summary.mainThread.share * 100)}%
+            </span>
+          </div>
         )}
       </div>
     </section>
