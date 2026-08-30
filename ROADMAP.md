@@ -2,8 +2,8 @@
 
 ## 当前阶段
 
-- **Phase**：v0.2.0 平台与集成能力
-- **状态**：第一、第二、第三阶段的 Windows 本地实现与验收完成；v0.2.0 已发布。
+- **Phase**：v0.2.1 稳定性修复
+- **状态**：第一、第二、第三阶段的 Windows 本地实现与验收完成，v0.2.0 已发布；v0.2.1 修复已通过自动化和浏览器宽窄屏验证，尚未提交、打包或发布。
 
 ## 已完成
 
@@ -68,21 +68,37 @@
 - [x] **P0-5 隐私三层叙事**：`OnboardingDialog.tsx` 首启隐私确认改三层卡片（采集层·只读文字不看画面/处理层·本地规则或你的LLM/存储层·SQLite本地+脱敏导出）；`Settings.tsx` 隐私区加三层说明；新增 `docs/privacy-narrative.md`（FAQ 5 条）。
 - [x] **验证**：npm run typecheck ✅ / test:features 11/11 ✅ / npm run build ✅（2.93s）；浏览器实机验收：叙事卡三行信息渲染正确、报告编辑→保存→已编辑 badge→还原全链路通过、控制台无错误。
 
-## 已完成：工程代号清理（2026-08-29）
+## 已完成：工程名称与升级兼容（2026-08-29 至 2026-08-30）
 
-- [x] **移除 `xiaohei` 旧代号残留**：全项目 20 处引用改为 `moji`——`Cargo.toml`（crate `moji-daily`/`moji_daily_lib`）、`tauri.conf.json` identifier（`com.xiaohei.daily`→`com.moji.daily`）、`package.json` 与 `package-lock.json`（name）、`main.rs`/`mcp.rs`/`bin/moji-mcp.rs`（库名与数据目录）、`screenshot.rs`（自排除关键字）、`activityStore.tsx`（localStorage key 4 个）、`check-release.ps1`（Cargo.lock 版本匹配正则）。
-- [x] **备份**：改前已备份 9 个源文件到 `D:/Projects_backup/moji-before-rename/`。
-- [x] **残留检查**：`grep -rn xiaohei`（排除 target/node_modules）零命中；`tauri.conf.json`、`package.json`、`package-lock.json` JSON 解析全部通过。
-- [x] **验证全绿**：`cargo check` 通过（1m24s，crate 已识别为 `moji-daily v0.2.0`，零错误）；`npm run typecheck` 通过；`npm run test:features` 11/11 通过。
-- [ ] **待办**：改动尚未 git commit；数据目录因 identifier 变为 `com.moji.daily`，首次启动需从 `AppData/Roaming/com.xiaohei.daily/` 迁移 `moji.db` 与 localStorage 数据。
+- [x] **统一对外工程名称**：crate、库名、包名、可执行文件引用和截图自排除关键字统一使用 `moji`。
+- [x] **保留已发布持久化标识**：Tauri identifier 继续使用 `com.xiaohei.daily`，活动、设置、API Key 和同步密码继续使用已发布的 `xiaohei-*` localStorage key。这些值属于升级兼容协议，不作为界面品牌展示。
+- [x] **保持升级兼容**：v0.2.1 继续读取原数据目录和原 localStorage 数据，不需要复制数据库；报告历史仅新增可空列，升级前另存 `moji.db.pre-v021.backup`，不覆盖已有 `pre-v012` 备份。
+- [x] **版本校验**：`package.json`、`package-lock.json`、`Cargo.toml`、`Cargo.lock` 和 `tauri.conf.json` 已统一为 `0.2.1`，发布版本检查通过。
 
-## 待办：发布
+## 已完成：v0.2.1 Review 修复（2026-08-30）
+
+- [x] 报告编辑绑定开始编辑时的报告 ID；编辑期间禁用历史切换、还原、删除和重新生成，并拒绝保存空白内容。
+- [x] 叙事卡按重叠时间片分配分类和应用时长，分类与应用占比不再超过全局有效时长。
+- [x] AI 日报、周报和月报接入活动统计、专注数据与上期对比；月报使用独立的月度结构和“较上月”口径。
+- [x] 有 LLM 模式默认启用叙事摘要；缓存增加活动摘要、模型和接口地址签名，数据变化后重新生成。
+- [x] 新增报告编辑、重叠占比、AI 统计和月报提示词回归测试。
+- [x] 无 LLM 日报、周报和月报按所选周期生成对应标题与记录，周报和月报时间线包含日期。
+- [x] 报告原始内容、编辑时间和生成模式写入 SQLite，并通过加密快照同步；旧数据库和旧快照保持兼容。
+- [x] 叙事缓存签名与实际发送给模型的 payload 共用同一数据对象；报告工具栏在窄窗口下自动换行。
+
+## 已完成：v0.2.0 发布
 
 - [x] 本地提交：整理 v0.2.0 改动并提交到 `master`（`8c0d516`）。
 - [x] Windows 安装包：已构建并通过发布校验，SHA-256 为 `e6d830726a6fc5ae9f95bb7cdd566ab12001ec394827316ae0e77efdbb982191`。
 - [x] 远端推送：`master` 已快进推送到 `origin`（`8c0d516`）。
 - [x] 标签：`v0.2.0` annotated tag 已创建并推送，指向 `8c0d516`。
 - [x] GitHub Release：已发布 `v0.2.0` 并上传 Windows x64 安装包，见 https://github.com/yinbing-666/moji/releases/tag/v0.2.0 。
+
+## 待办：v0.2.1 发布
+
+- [ ] 提交当前修复；提交操作需单独确认。
+- [ ] 构建并验收 Windows x64 安装包；当前仅完成生产前端构建。
+- [ ] 推送、打标签并创建 GitHub Release；远端写入和公开发布需单独确认。
 
 第三阶段设计见 `docs/specs/2026-08-22-v0.2.0-platform-and-integration-design.md`。
 
@@ -98,17 +114,18 @@
 
 ## 最近验证
 
-- **功能测试**：`npm run test:features` 结果 11 passed，0 failed；新增覆盖报告原始统计周期和同步设备 ID 迁移。
+- **功能测试**：`npm run test:features` 结果 17 passed，0 failed；覆盖本地日／周／月报告周期、报告编辑元数据与生成模式、叙事缓存签名、重叠占比、AI 报告统计、月报提示词和同步设备 ID 迁移。
 - **前端检查**：`npm run typecheck` 与 `npm run build` 通过；Vite 仅保留既有的模块分块提示。
-- **Rust 测试**：`cargo test --locked` 结果 15 passed，0 failed，6 ignored；覆盖 FTS、本地 API、MCP、加密同步、汇总、PDF 文本处理、数据清理和周计划持久化。
+- **Rust 测试**：`cargo test --locked` 结果 18 passed，0 failed，6 ignored；覆盖报告历史增量迁移、报告元数据加密同步、旧快照兼容、FTS、本地 API、MCP、汇总、PDF 文本处理、数据清理和周计划持久化。
 - **测试数据库**：内存 SQLite 验证清理只删除截止时间之前的活动，边界记录保留，FTS 索引同步更新，无效截止时间不删除数据；周计划可覆盖保存并读取。
 - **CI 配置**：前端任务运行功能测试，Windows 后端任务运行 `cargo test --locked`；当前版本不构建 macOS 或 Linux 安装包。
-- **发布校验**：`scripts/check-release.ps1` 通过，六处版本均为 `0.2.0`；NSIS 安装包 `墨记_0.2.0_x64-setup.exe` 构建完成，SHA-256 为 `e6d830726a6fc5ae9f95bb7cdd566ab12001ec394827316ae0e77efdbb982191`。
+- **发布校验**：`scripts/check-release.ps1` 通过，六处版本均为 `0.2.1`；v0.2.1 安装包尚未构建。最近已发布的 NSIS 安装包仍为 `墨记_0.2.0_x64-setup.exe`，SHA-256 为 `e6d830726a6fc5ae9f95bb7cdd566ab12001ec394827316ae0e77efdbb982191`。
 - **服务检查**：真实 debug 进程运行中，内置 ActivityWatch `127.0.0.1:5601` 返回 v0.13.2。
-- **界面验收**：新增桌面集成、加密同步、数据源、MCP 和本地 API 设置通过 1440×1000 与 390×844 可见验收；无横向溢出或控件截断。
+- **界面验收**：报告页通过 1440×1000 与 390×844 浏览器验收；历史报告显示自身生成模式，本地周报和月报可点击生成，页面无横向溢出或控件截断，控制台 0 error、0 warning。
+- **迁移验证范围**：报告历史增量迁移使用内存 SQLite 验证，未启动 Tauri 或触碰真实用户数据库。
 - **PDF 验收**：独立 A4 渲染器生成两页 QA 报告；中文、图表、ASCII 列表、英文换行、分页和页脚可读，无 Markdown 标记、重叠或截断。
 - **真实迁移**：`moji.db.pre-v012.backup` 完整性检查为 `ok`；新列、`weekly_plans`、FTS 表和同步触发器均存在，1334 条活动与 1334 条索引一致。
 - **真实本地 API**：启动前端口 `5610` 未监听；开启后仅绑定 `127.0.0.1`，健康、活动、汇总端点正常，错误令牌返回 `401`，汇总覆盖 1337 条活动。
 - **真实 MCP**：debug 可执行文件以 `--mcp` 进入 `stdio` 模式，`tools/list` 返回 3 个只读工具。
 - **真实回溯**：桌面 APP 使用 SQLite 返回 6 条本周活动，搜索 `ChatGPT` 返回 26 条匹配记录。
-- **Git 状态**：v0.2.0 已完成本地提交、远端推送、标签和 GitHub Release。
+- **Git 状态**：v0.2.0 已完成本地提交、远端推送、标签和 GitHub Release；v0.2.1 修复尚未提交。

@@ -27,6 +27,16 @@ export interface AwReportCategory {
   count?: number
 }
 
+export interface AiReportStats {
+  summary: { active_seconds: number; productive_percent: number }
+  categories: Array<{ name: string; seconds: number; percent: number }>
+  apps: Array<{ name: string; percent: number }>
+  focus_analysis?: { longest_focus_seconds: number; avg_focus_seconds: number; interruptions: number; fragmentation: number }
+  comparison?: { active_seconds_delta_percent: number; productive_delta_pp: number; interruptions_delta: number }
+  daily_breakdown?: Array<{ date: string; active_seconds: number }>
+  insights?: string[]
+}
+
 export interface AwReportTrendPoint {
   date: string
   pulse: number
@@ -320,6 +330,89 @@ export function analyzeFocusPatterns(activities: Activity[]) {
       .map(([app, value]) => ({ app, ...value }))
       .sort((a, b) => b.seconds - a.seconds || b.count - a.count)
       .slice(0, 5),
+  }
+}
+
+export function buildAiReportStats(
+  activities: Activity[],
+  previousActivities: Activity[] = [],
+): AiReportStats {
+  const summarize = (items: Activity[]) => {
+    const hasDuration = items.some(activity => (activity.durationSeconds ?? 0) > 0)
+    const totalUnits = weightedUnits(items, hasDuration)
+    const totalSeconds = items.reduce(
+      (sum, activity) => sum + Math.max(activity.durationSeconds ?? 0, 0),
+      0,
+    )
+    const productiveUnits = weightedUnits(
+      items.filter(activity => activity.category === 'dev' || activity.category === 'doc'),
+      hasDuration,
+    )
+    return {
+      hasDuration,
+      totalUnits,
+      totalSeconds,
+      productivePercent: totalUnits > 0 ? (productiveUnits / totalUnits) * 100 : 0,
+      focus: analyzeFocusPatterns(items),
+    }
+  }
+
+  const current = summarize(activities)
+  const previous = summarize(previousActivities)
+  const denominator = Math.max(current.totalUnits, 1)
+  const categoryUnits = new Map<Activity['category'], number>()
+  const appUnits = new Map<string, number>()
+
+  for (const activity of activities) {
+    const units = current.hasDuration ? Math.max(activity.durationSeconds ?? 0, 0) : 1
+    categoryUnits.set(activity.category, (categoryUnits.get(activity.category) ?? 0) + units)
+    appUnits.set(activity.app, (appUnits.get(activity.app) ?? 0) + units)
+  }
+
+  const dailySeconds = new Map<string, number>()
+  for (const activity of activities) {
+    const date = localDateKey(activity.timestamp)
+    if (!date) continue
+    dailySeconds.set(date, (dailySeconds.get(date) ?? 0) + Math.max(activity.durationSeconds ?? 0, 0))
+  }
+
+  const round = (value: number) => Math.round(value * 10) / 10
+  const focusBlockCount = current.focus.focusBlockCount
+  const comparison = previousActivities.length > 0 && previous.totalSeconds > 0
+    ? {
+        active_seconds_delta_percent: round(((current.totalSeconds - previous.totalSeconds) / previous.totalSeconds) * 100),
+        productive_delta_pp: round(current.productivePercent - previous.productivePercent),
+        interruptions_delta: current.focus.interruptionCount - previous.focus.interruptionCount,
+      }
+    : undefined
+
+  return {
+    summary: {
+      active_seconds: current.totalSeconds,
+      productive_percent: round(current.productivePercent),
+    },
+    categories: [...categoryUnits.entries()]
+      .map(([category, units]) => ({
+        name: categoryVisual(category).label,
+        seconds: current.hasDuration ? units : 0,
+        percent: round((units / denominator) * 100),
+      }))
+      .sort((a, b) => b.percent - a.percent),
+    apps: [...appUnits.entries()]
+      .map(([name, units]) => ({ name, percent: round((units / denominator) * 100) }))
+      .sort((a, b) => b.percent - a.percent),
+    focus_analysis: {
+      longest_focus_seconds: current.focus.longestFocusSeconds,
+      avg_focus_seconds: focusBlockCount > 0 ? current.focus.focusSeconds / focusBlockCount : 0,
+      interruptions: current.focus.interruptionCount,
+      fragmentation: current.focus.focusSeconds > 0
+        ? round(Math.min(current.focus.fragmentSeconds / current.focus.focusSeconds, 1))
+        : 0,
+    },
+    comparison,
+    daily_breakdown: [...dailySeconds.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, active_seconds]) => ({ date, active_seconds })),
   }
 }
 

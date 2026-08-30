@@ -5,6 +5,7 @@
  * [P1优化] 本地确定性分类规则完整保留，作为AI失败的降级方案
  */
 import { invoke } from '@tauri-apps/api/core'
+import type { AiReportStats } from './awReport'
 
 export interface ActivityAnalysis {
   category: 'dev' | 'meeting' | 'doc' | 'communication' | 'other'
@@ -265,24 +266,16 @@ export async function analyzeWindowText(
   return parseAnalysisContent(content)
 }
 
-/** 统计汇总数据（预期来自 awReport.ts 模块；该模块当前未接入，故在此定义结构类型，字段缺失时 formatStatsBlock 会跳过对应行） */
-export interface AwReportStats {
-  summary: { active_seconds: number; productive_percent: number }
-  categories: Array<{ name: string; seconds: number; percent: number }>
-  apps: Array<{ name: string; percent: number }>
-  focus_analysis?: { longest_focus_seconds: number; avg_focus_seconds: number; interruptions: number; fragmentation: number }
-  comparison?: { active_seconds_delta_percent: number; productive_delta_pp: number; interruptions_delta: number }
-  daily_breakdown?: Array<{ date: string; active_seconds: number }>
-  insights?: string[]
-}
+export type AwReportStats = AiReportStats
+type ReportPeriod = 'daily' | 'weekly' | 'monthly'
 
 /** 把统计汇总预计算为只读数据块注入 prompt，模型只负责叙述、不自行估算 */
-function formatStatsBlock(s: AwReportStats, period: 'daily' | 'weekly'): string {
+function formatStatsBlock(s: AwReportStats, period: ReportPeriod): string {
   const h = (sec: number) => (sec / 3600).toFixed(1) + 'h'
   const lines = [
     `活跃时长：${h(s.summary.active_seconds)}；生产力占比：${s.summary.productive_percent}%`,
-    `分类分布：${s.categories.map(c => `${c.name} ${h(c.seconds)}(${c.percent}%)`).join('、')}`,
-    `主要应用：${s.apps.slice(0, 5).map(a => `${a.name} ${a.percent}%`).join('、')}`,
+    `分类分布：${s.categories.map(c => `${c.name} ${h(c.seconds)}(${c.percent}%)`).join('、') || '无数据'}`,
+    `主要应用：${s.apps.slice(0, 5).map(a => `${a.name} ${a.percent}%`).join('、') || '无数据'}`,
   ]
   if (s.focus_analysis) {
     const f = s.focus_analysis
@@ -293,14 +286,14 @@ function formatStatsBlock(s: AwReportStats, period: 'daily' | 'weekly'): string 
   }
   if (s.comparison) {
     const c = s.comparison
-    const label = period === 'weekly' ? '较上周' : '较昨日'
+    const label = period === 'monthly' ? '较上月' : period === 'weekly' ? '较上周' : '较昨日'
     lines.push(
       `${label}：活跃时长 ${c.active_seconds_delta_percent >= 0 ? '+' : ''}${c.active_seconds_delta_percent}%；` +
       `生产力占比 ${c.productive_delta_pp >= 0 ? '+' : ''}${c.productive_delta_pp}pp；` +
       `打断次数 ${c.interruptions_delta >= 0 ? '+' : ''}${c.interruptions_delta} 次`
     )
   }
-  if (period === 'weekly' && s.daily_breakdown) {
+  if (period !== 'daily' && s.daily_breakdown) {
     lines.push(
       `每日活跃：${s.daily_breakdown.map(d => `${d.date.slice(5)} ${h(d.active_seconds)}`).join('、')}`
     )
@@ -312,7 +305,7 @@ function formatStatsBlock(s: AwReportStats, period: 'daily' | 'weekly'): string 
 }
 
 const REPORT_SYSTEM = `你是资深工程效能分析师，为工程师生成"重点提炼式"工作汇报。
-你的输出会被直接粘贴到周报/同步工具，因此必须结论先行、可扫读、无寒暄。
+你的输出会被直接粘贴到工作汇报或同步工具，因此必须结论先行、可扫读、无寒暄。
 
 硬性规则：
 1. 只使用【活动记录】和【统计数据】中出现的信息，禁止推测、补全或编造任何事实、指标、人名、项目名。
@@ -371,19 +364,49 @@ const WEEKLY_STRUCT = `请严格按以下结构输出：
 逐项列出统计口径与数值，含累计值与环比。
 `;
 
-function buildReportPrompt(opts: {
-  period: 'daily' | 'weekly';
-  activities: string;
-  statsBlock: string;
-  templateDesc?: string;
+const MONTHLY_STRUCT = `请严格按以下结构输出：
+
+## 本月 3-5 个重点
+按重要性排序，将跨周的同一主线合并为主题级重点。每条格式：
+
+### 1. <一句话结论式标题>
+- **做了什么**：概括本月推进过程与当前状态，1-2 句
+- **为什么重要**：说明对月度目标或项目阶段的实际贡献
+- **证据**：引用涉及的日期、主要 app 与 description 片段
+
+## 产出
+本月交付物清单，按主题聚合，标注完成/进行中。
+
+## 阻塞
+本月仍未解决的问题与遗留项，注明下一步。确无阻塞写“无明显阻塞。”
+
+## 本月趋势
+- 累计活跃时长与每日投入分布
+- 分类结构与主要应用分布
+- 专注质量与打断情况
+- 与上月对比的关键差异，仅陈述【统计数据】中 comparison 字段支持的结论；没有 comparison 时明确写“暂无上月对比数据”
+
+## 数据依据
+逐项列出统计口径与数值，含月度累计值与环比。
+`;
+
+export function buildReportPrompt(opts: {
+  period: ReportPeriod
+  activities: string
+  statsBlock: string
+  templateDesc?: string
 }) {
-  const struct = opts.period === 'weekly' ? WEEKLY_STRUCT : DAILY_STRUCT;
+  const struct = opts.period === 'monthly'
+    ? MONTHLY_STRUCT
+    : opts.period === 'weekly'
+      ? WEEKLY_STRUCT
+      : DAILY_STRUCT
   return [
     struct,
     opts.templateDesc ? `\n补充风格要求（不得覆盖上述结构与硬性规则）：\n${opts.templateDesc}` : '',
     `\n【统计数据】\n${opts.statsBlock || '（未提供统计数据，"数据依据"章节请写：本次未接入统计数据。）'}`,
     `\n【活动记录】（共 ${opts.activities.split('\n').length} 条）\n${opts.activities}`,
-  ].join('\n');
+  ].join('\n')
 }
 
 export async function generateReport(
@@ -406,7 +429,7 @@ export async function generateReport(
   }
   const lines = activities.map(a => '[' + a.timestamp + '] ' + a.category + ' | ' + a.app_name + ' | ' + a.description)
   const text = lines.join('\n')
-  const period: 'daily' | 'weekly' = type === 'daily' ? 'daily' : 'weekly'
+  const period: ReportPeriod = type
   const statsBlock = stats ? formatStatsBlock(stats, period) : ''
 
   const content = buildReportPrompt({
@@ -424,7 +447,7 @@ export async function generateReport(
       { role: 'system', content: REPORT_SYSTEM },
       { role: 'user', content },
     ],
-    period === 'daily' ? 1600 : 2600,
+    period === 'daily' ? 1600 : period === 'weekly' ? 2600 : 3000,
     0.2,
   )
   return result

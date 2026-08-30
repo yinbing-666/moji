@@ -24,6 +24,9 @@ export interface DbReportHistory {
   report_type: string
   template: string
   content: string
+  origin_content: string | null
+  edited_at: number | null
+  generation_mode: string | null
 }
 
 interface PaginatedParams {
@@ -297,6 +300,9 @@ export async function dbSaveReportHistory(item: {
   type: string
   template: string
   content: string
+  originContent: string | null
+  editedAt: number | null
+  generationMode: string | null
 }): Promise<boolean> {
   return (await call('db_save_report_history', {
     id: item.id,
@@ -304,6 +310,9 @@ export async function dbSaveReportHistory(item: {
     reportType: item.type,
     template: item.template,
     content: item.content,
+    originContent: item.originContent,
+    editedAt: item.editedAt,
+    generationMode: item.generationMode,
   })) !== null
 }
 

@@ -25,6 +25,10 @@ const REPORT_TYPE_LABEL: Record<string, string> = {
   monthly: '月报',
 }
 
+function reportModeLabel(mode: 'local' | 'llm' | undefined): string {
+  return mode === 'local' ? '固定格式模式' : mode === 'llm' ? 'AI 模式' : '生成模式未记录'
+}
+
 interface ReportViewProps {
   activities: Activity[]
 }
@@ -116,7 +120,7 @@ export function ReportView({ activities }: ReportViewProps) {
     revertReport,
   } = useActivityStore()
   const [copied, setCopied] = useState(false)
-  const [editing, setEditing] = useState(false)
+  const [editingReportId, setEditingReportId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [reportDate, setReportDate] = useState(todayDateKey)
   const [selectedTemplate, setSelectedTemplate] = useState('standard')
@@ -131,6 +135,7 @@ export function ReportView({ activities }: ReportViewProps) {
   const [pdfBusy, setPdfBusy] = useState(false)
   const [pdfMsg, setPdfMsg] = useState<string | null>(null)
   const reportContentRef = useRef<HTMLElement | null>(null)
+  const editing = editingReportId !== null
   const isLocalMode = settings.dataSource === 'local'
   const effectiveTemplate = isLocalMode && selectedTemplate.startsWith('custom:') ? 'standard' : selectedTemplate
 
@@ -238,7 +243,7 @@ export function ReportView({ activities }: ReportViewProps) {
         title: `墨记${typeLabel}-${sourceDate}`,
         reportType: typeLabel,
         createdAt: new Date(lastReport.createdAt).toLocaleString('zh-CN'),
-        mode: isLocalMode ? '固定格式模式' : 'AI 模式',
+        mode: reportModeLabel(lastReport.generationMode),
         template: templateLabel(lastReport.template),
         content: lastReport.content,
         activityCount: exportReportData?.total ?? 0,
@@ -278,19 +283,20 @@ export function ReportView({ activities }: ReportViewProps) {
   const startEditReport = () => {
     if (!lastReport) return
     setDraft(lastReport.content)
-    setEditing(true)
+    setEditingReportId(lastReport.id)
   }
 
   const handleCancelReportEdit = () => {
-    setDraft(lastReport?.content ?? '')
-    setEditing(false)
+    const original = reportHistory.find(item => item.id === editingReportId)
+    setDraft(original?.content ?? '')
+    setEditingReportId(null)
   }
 
   const handleSaveReportEdit = () => {
-    if (!lastReport) return
-    updateReport(reportHistory, lastReport.id, draft)
+    if (!editingReportId || !draft.trim()) return
+    updateReport(reportHistory, editingReportId, draft)
     setDraft('')
-    setEditing(false)
+    setEditingReportId(null)
   }
 
   const reportData = useMemo(() => {
@@ -391,7 +397,7 @@ export function ReportView({ activities }: ReportViewProps) {
           <button
             type="button"
             onClick={handleGenerateReport}
-            disabled={isGeneratingReport || !reportData}
+            disabled={isGeneratingReport || !reportData || editing}
             className={`rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
               isGeneratingReport
                 ? 'border border-warn-line bg-warn-soft text-warn-ink'
@@ -482,7 +488,7 @@ export function ReportView({ activities }: ReportViewProps) {
         <section ref={reportContentRef} className="overflow-hidden rounded-xl border border-line bg-surface shadow-card">
           <div className="border-b border-line-soft bg-sunken px-5 py-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-line-soft pb-3">
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent-ink ring-1 ring-accent-soft">
                 {REPORT_TYPE_LABEL[lastReport.type] ?? lastReport.type}
               </span>
@@ -498,10 +504,10 @@ export function ReportView({ activities }: ReportViewProps) {
                 {templateLabel(lastReport.template)}
               </span>
               <span className="rounded-full bg-sunken px-2 py-0.5 text-[10px] font-medium text-ink-muted">
-                当前为 {isLocalMode ? '固定格式模式' : 'AI 模式'}
+                {reportModeLabel(lastReport.generationMode)}
               </span>
             </div>
-            <div className="report-no-print flex items-center gap-2">
+            <div className="report-no-print flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => void handleCopyReport()}
@@ -543,7 +549,8 @@ export function ReportView({ activities }: ReportViewProps) {
                   <button
                     type="button"
                     onClick={handleSaveReportEdit}
-                    className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-strong"
+                    disabled={!draft.trim()}
+                    className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     保存
                   </button>
@@ -615,8 +622,9 @@ export function ReportView({ activities }: ReportViewProps) {
                 <button
                   type="button"
                   onClick={() => viewReport(item)}
-                  className="min-w-0 flex-1 text-left"
-                  title="查看这份报告"
+                  disabled={editing}
+                  className="min-w-0 flex-1 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                  title={editing ? '请先保存或取消当前编辑' : '查看这份报告'}
                 >
                   <p className="truncate text-sm text-ink">{item.content.split('\n')[0] || '（无内容）'}</p>
                   <p className="mt-0.5 text-xs text-ink-faint">
@@ -633,7 +641,8 @@ export function ReportView({ activities }: ReportViewProps) {
                   <button
                     type="button"
                     onClick={() => revertReport(item.id)}
-                    className="shrink-0 rounded-md px-2 py-1 text-xs text-ink-faint transition-colors hover:bg-accent-soft hover:text-accent-ink"
+                    disabled={editing}
+                    className="shrink-0 rounded-md px-2 py-1 text-xs text-ink-faint transition-colors hover:bg-accent-soft hover:text-accent-ink disabled:cursor-not-allowed disabled:opacity-50"
                     title="还原到原始内容"
                   >
                     还原
@@ -642,7 +651,8 @@ export function ReportView({ activities }: ReportViewProps) {
                 <button
                   type="button"
                   onClick={() => handleDeleteReport(item.id)}
-                  className="shrink-0 rounded-md px-2 py-1 text-xs text-ink-faint transition-colors hover:bg-danger-soft hover:text-danger-ink"
+                  disabled={editing}
+                  className="shrink-0 rounded-md px-2 py-1 text-xs text-ink-faint transition-colors hover:bg-danger-soft hover:text-danger-ink disabled:cursor-not-allowed disabled:opacity-50"
                   title="删除这条报告"
                 >
                   删除

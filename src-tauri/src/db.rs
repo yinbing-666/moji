@@ -41,6 +41,12 @@ pub struct DbReportHistory {
     pub report_type: String,
     pub template: String,
     pub content: String,
+    #[serde(default)]
+    pub origin_content: Option<String>,
+    #[serde(default)]
+    pub edited_at: Option<i64>,
+    #[serde(default)]
+    pub generation_mode: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -93,7 +99,10 @@ pub fn init_database(app_data_dir: &PathBuf) -> Result<Connection, String> {
             created_at TEXT NOT NULL,
             report_type TEXT NOT NULL,
             template TEXT NOT NULL DEFAULT 'standard',
-            content TEXT NOT NULL
+            content TEXT NOT NULL,
+            origin_content TEXT,
+            edited_at INTEGER,
+            generation_mode TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_report_hist_created ON report_history(created_at DESC);
         CREATE TABLE IF NOT EXISTS weekly_plans (
@@ -134,6 +143,18 @@ fn migrate_schema(conn: &Connection) -> Result<(), String> {
         conn.execute("ALTER TABLE activities ADD COLUMN ide_project TEXT", [])
             .map_err(|e| format!("迁移 activities.ide_project 失败: {e}"))?;
     }
+    if !column_exists(conn, "report_history", "origin_content")? {
+        conn.execute("ALTER TABLE report_history ADD COLUMN origin_content TEXT", [])
+            .map_err(|e| format!("迁移 report_history.origin_content 失败: {e}"))?;
+    }
+    if !column_exists(conn, "report_history", "edited_at")? {
+        conn.execute("ALTER TABLE report_history ADD COLUMN edited_at INTEGER", [])
+            .map_err(|e| format!("迁移 report_history.edited_at 失败: {e}"))?;
+    }
+    if !column_exists(conn, "report_history", "generation_mode")? {
+        conn.execute("ALTER TABLE report_history ADD COLUMN generation_mode TEXT", [])
+            .map_err(|e| format!("迁移 report_history.generation_mode 失败: {e}"))?;
+    }
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS weekly_plans (
             week_start TEXT PRIMARY KEY,
@@ -161,13 +182,17 @@ fn schema_upgrade_required(conn: &Connection) -> Result<bool, String> {
     Ok(
         !column_exists(conn, "activities", "browser_domain")?
             || !column_exists(conn, "activities", "ide_project")?
+            || !table_exists(conn, "report_history")?
+            || !column_exists(conn, "report_history", "origin_content")?
+            || !column_exists(conn, "report_history", "edited_at")?
+            || !column_exists(conn, "report_history", "generation_mode")?
             || !table_exists(conn, "weekly_plans")?
             || !table_exists(conn, "activities_fts")?,
     )
 }
 
 fn create_upgrade_backup(conn: &Connection, app_data_dir: &PathBuf) -> Result<(), String> {
-    let backup = app_data_dir.join("moji.db.pre-v012.backup");
+    let backup = app_data_dir.join("moji.db.pre-v021.backup");
     if backup.exists() {
         return Ok(());
     }
@@ -259,6 +284,9 @@ fn row_to_report_history(row: &rusqlite::Row) -> rusqlite::Result<DbReportHistor
         report_type: row.get("report_type")?,
         template: row.get("template")?,
         content: row.get("content")?,
+        origin_content: row.get("origin_content")?,
+        edited_at: row.get("edited_at")?,
+        generation_mode: row.get("generation_mode")?,
     })
 }
 
@@ -598,12 +626,25 @@ pub fn db_save_report_history(
     report_type: String,
     template: String,
     content: String,
+    origin_content: Option<String>,
+    edited_at: Option<i64>,
+    generation_mode: Option<String>,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
     conn.execute(
-        "INSERT OR REPLACE INTO report_history (id, created_at, report_type, template, content)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![id, created_at, report_type, template, content],
+        "INSERT OR REPLACE INTO report_history
+         (id, created_at, report_type, template, content, origin_content, edited_at, generation_mode)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            id,
+            created_at,
+            report_type,
+            template,
+            content,
+            origin_content,
+            edited_at,
+            generation_mode,
+        ],
     )
     .map_err(|e| format!("Failed to save report history: {e}"))?;
     Ok(())
@@ -616,7 +657,8 @@ pub fn db_load_report_history(
     let conn = db.0.lock().map_err(|e| format!("DB lock error: {e}"))?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, created_at, report_type, template, content
+            "SELECT id, created_at, report_type, template, content,
+                    origin_content, edited_at, generation_mode
              FROM report_history ORDER BY created_at DESC LIMIT 20",
         )
         .map_err(|e| format!("Failed to prepare query: {e}"))?;
@@ -838,6 +880,51 @@ mod tests {
         ).expect("create test tables");
         initialize_activity_search(&connection).expect("initialize FTS");
         connection
+    }
+
+    #[test]
+    fn report_history_migration_preserves_legacy_rows_and_adds_nullable_metadata() {
+        let connection = Connection::open_in_memory().expect("open in-memory database");
+        connection.execute_batch(
+            "CREATE TABLE activities (
+                id TEXT PRIMARY KEY,
+                timestamp TEXT NOT NULL,
+                category TEXT NOT NULL,
+                app_name TEXT NOT NULL,
+                title TEXT,
+                description TEXT NOT NULL,
+                screenshot_base64 TEXT,
+                duration_seconds INTEGER,
+                browser_domain TEXT,
+                ide_project TEXT
+            );
+            CREATE TABLE report_history (
+                id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                report_type TEXT NOT NULL,
+                template TEXT NOT NULL DEFAULT 'standard',
+                content TEXT NOT NULL
+            );
+            INSERT INTO report_history
+                (id, created_at, report_type, template, content)
+            VALUES
+                ('legacy', '2026-08-22T00:00:00Z', 'daily', 'standard', 'legacy content');",
+        ).expect("create legacy report schema");
+
+        migrate_schema(&connection).expect("migrate report schema");
+        migrate_schema(&connection).expect("repeat report migration");
+
+        let report = connection.query_row(
+            "SELECT id, created_at, report_type, template, content,
+                    origin_content, edited_at, generation_mode
+             FROM report_history WHERE id = 'legacy'",
+            [],
+            row_to_report_history,
+        ).expect("read migrated report");
+        assert_eq!(report.content, "legacy content");
+        assert_eq!(report.origin_content, None);
+        assert_eq!(report.edited_at, None);
+        assert_eq!(report.generation_mode, None);
     }
 
     #[test]

@@ -23,6 +23,25 @@ const searchModule = await loadBundled('src/utils/searchQuery.ts')
 const durationModule = await loadBundled('src/utils/activityDuration.ts')
 const reportHistoryModule = await loadBundled('src/utils/reportHistory.ts')
 const syncDeviceModule = await loadBundled('src/utils/syncDeviceId.ts')
+const narrativeModule = await loadBundled('src/utils/narrative.ts')
+const aiModule = await loadBundled('src/utils/ai.ts')
+const localReportModule = await loadBundled('src/utils/localReport.ts')
+
+const localStorageData = new Map()
+globalThis.localStorage = {
+  getItem(key) {
+    return localStorageData.has(key) ? localStorageData.get(key) : null
+  },
+  setItem(key, value) {
+    localStorageData.set(key, String(value))
+  },
+  removeItem(key) {
+    localStorageData.delete(key)
+  },
+  clear() {
+    localStorageData.clear()
+  },
+}
 
 function activity(id, minutes, durationSeconds, category, app) {
   const start = new Date('2026-08-22T02:00:00Z').getTime()
@@ -177,6 +196,145 @@ test('report history preserves the source period and filters matching activities
   assert.equal(reportHistoryModule.filterActivitiesForReportPeriod(items, 'daily', '2026-08-23').length, 1)
   assert.equal(reportHistoryModule.filterActivitiesForReportPeriod(items, 'monthly', '2026-08-01').length, 3)
   assert.equal(reportHistoryModule.reportSourceDate({ id: '2026-08-19_example', createdAt: '2026-08-22T00:00:00Z' }), '2026-08-19')
+})
+
+test('local reports use the selected daily, weekly, and monthly periods', () => {
+  const reportActivity = (id, timestamp, app) => ({
+    id,
+    timestamp,
+    durationSeconds: 600,
+    category: 'dev',
+    app,
+    title: app,
+    description: app,
+  })
+  const activities = [
+    reportActivity('before-week', '2026-08-16T02:00:00.000Z', 'BeforeWeek'),
+    reportActivity('week-monday', '2026-08-17T02:00:00.000Z', 'WeekMonday'),
+    reportActivity('daily-current', '2026-08-22T02:00:00.000Z', 'DailyCurrent'),
+    reportActivity('week-sunday', '2026-08-23T02:00:00.000Z', 'WeekSunday'),
+    reportActivity('month-end', '2026-08-31T02:00:00.000Z', 'MonthEnd'),
+    reportActivity('next-month', '2026-09-01T02:00:00.000Z', 'NextMonth'),
+  ]
+
+  const daily = localReportModule.generateLocalReport(activities, '2026-08-22', 'daily')
+  assert.match(daily, /2026年8月22日星期六 工作日报/)
+  assert.match(daily, /DailyCurrent/)
+  assert.doesNotMatch(daily, /WeekMonday|WeekSunday/)
+
+  const weekly = localReportModule.generateLocalReport(activities, '2026-08-19', 'weekly')
+  assert.match(weekly, /2026年8月17日至8月23日 工作周报/)
+  assert.match(weekly, /WeekMonday/)
+  assert.match(weekly, /WeekSunday/)
+  assert.doesNotMatch(weekly, /BeforeWeek|MonthEnd/)
+  assert.match(weekly, /8月17日/)
+
+  const monthly = localReportModule.generateLocalReport(activities, '2026-08-01', 'monthly')
+  assert.match(monthly, /2026年8月 工作月报/)
+  assert.match(monthly, /BeforeWeek/)
+  assert.match(monthly, /MonthEnd/)
+  assert.doesNotMatch(monthly, /NextMonth/)
+  assert.match(monthly, /8月31日/)
+})
+
+test('report history round-trip preserves edit metadata and generation mode', () => {
+  localStorage.clear()
+  const report = {
+    id: '2026-08-22_metadata',
+    createdAt: '2026-08-22T04:00:00.000Z',
+    type: 'weekly',
+    template: 'standard',
+    content: '# 已编辑报告',
+    originContent: '# 原始报告',
+    edited: true,
+    editedAt: 1_777_777_777_000,
+    generationMode: 'local',
+  }
+
+  reportHistoryModule.saveReportHistory([report])
+  assert.deepEqual(reportHistoryModule.loadReportHistory(), [report])
+})
+
+test('report edits preserve the first generated content and reject blank replacements', () => {
+  const original = {
+    id: '2026-08-22_example',
+    createdAt: '2026-08-22T04:00:00.000Z',
+    type: 'daily',
+    template: 'standard',
+    content: '# 原始报告',
+  }
+
+  const firstEdit = reportHistoryModule.updateReportHistoryItem([original], original.id, '# 第一次编辑')
+  assert.equal(firstEdit[0].content, '# 第一次编辑')
+  assert.equal(firstEdit[0].originContent, '# 原始报告')
+
+  const secondEdit = reportHistoryModule.updateReportHistoryItem(firstEdit, original.id, '# 第二次编辑')
+  assert.equal(secondEdit[0].originContent, '# 原始报告')
+
+  const reverted = reportHistoryModule.revertReportHistoryItem(secondEdit, original.id)
+  assert.equal(reverted[0].content, '# 原始报告')
+  assert.equal(reverted[0].edited, undefined)
+  const blankHistory = [original]
+  assert.strictEqual(reportHistoryModule.updateReportHistoryItem(blankHistory, original.id, '   '), blankHistory)
+})
+
+test('narrative ratios allocate overlapping time without exceeding the active union', () => {
+  const summary = narrativeModule.computeNarrativeSummary([
+    activity('overlap-dev', 0, 3600, 'dev', 'Code'),
+    activity('overlap-meeting', 0, 3600, 'meeting', 'Teams'),
+  ], new Date('2026-08-22T12:00:00Z'))
+  const ratios = Object.values(summary.categoryRatio)
+
+  assert.equal(summary.totalSeconds, 3600)
+  assert.ok(ratios.every(ratio => ratio >= 0 && ratio <= 1))
+  assert.ok(Math.abs(ratios.reduce((sum, ratio) => sum + ratio, 0) - 1) < 1e-9)
+  assert.ok(Math.abs(summary.topApps.reduce((sum, app) => sum + app.seconds, 0) - 3600) < 1e-9)
+})
+
+test('narrative cache signature follows the exact LLM payload within the old time bucket', () => {
+  const first = {
+    totalMinutes: 30,
+    activeRange: null,
+    topApps: [{ app: 'Code', seconds: 1_790 }],
+    categoryRatio: { dev: 1 },
+    longestFocus: null,
+  }
+  const changed = {
+    ...first,
+    topApps: [{ app: 'Code', seconds: 1_790 }, { app: 'Obsidian', seconds: 10 }],
+  }
+
+  const firstSignature = narrativeModule.buildNarrativeCacheSignature(first, 'model-a', 'https://example.com/v1/')
+  const changedSignature = narrativeModule.buildNarrativeCacheSignature(changed, 'model-a', 'https://example.com/v1/')
+  assert.notEqual(firstSignature, changedSignature)
+})
+
+test('AI report stats include measured activity data and monthly prompts use monthly wording', () => {
+  const current = [
+    activity('stats-dev', 0, 3600, 'dev', 'Code'),
+    activity('stats-doc', 60, 1800, 'doc', 'Obsidian'),
+  ]
+  const previous = [activity('stats-previous', 0, 1800, 'dev', 'Code')]
+  const stats = reportModule.buildAiReportStats(current, previous)
+
+  assert.equal(stats.summary.active_seconds, 5400)
+  assert.equal(stats.comparison.active_seconds_delta_percent, 200)
+  assert.equal(stats.daily_breakdown.length, 1)
+
+  const fragmented = reportModule.buildAiReportStats([
+    activity('fragment-focus', 0, 60, 'dev', 'Code'),
+    activity('fragment-other', 2, 60, 'other', 'Browser'),
+  ])
+  assert.ok(fragmented.focus_analysis.fragmentation >= 0)
+  assert.ok(fragmented.focus_analysis.fragmentation <= 1)
+
+  const prompt = aiModule.buildReportPrompt({
+    period: 'monthly',
+    activities: '[2026-08-22] dev | Code | 完成月度功能',
+    statsBlock: '活跃时长：1.5h',
+  })
+  assert.match(prompt, /本月 3-5 个重点/)
+  assert.doesNotMatch(prompt, /本周/)
 })
 
 test('sync device ids migrate the shared placeholder to a stable unique value', () => {

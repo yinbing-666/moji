@@ -13,6 +13,7 @@ import {
   dbSaveBackup,
   dbFetchAwEvents,
   dbLoadReportHistory,
+  dbSaveReportHistory,
   isSqliteAvailable,
   type DbReportHistory,
 } from '../utils/db'
@@ -28,9 +29,10 @@ import {
 } from '../utils/reportHistory'
 import { createSyncDeviceId, resolveSyncDeviceId } from '../utils/syncDeviceId'
 import { recordDiagnostic } from '../utils/diagnostics'
-import { generateLocalDailyReport } from '../utils/localReport'
+import { generateLocalReport } from '../utils/localReport'
 import { getTemplateDescription, loadCustomTemplates } from '../utils/templates'
 import { createDemoWeek, isDemoActivity } from '../utils/demoData'
+import { localDateKey } from '../utils/date'
 import {
   ACTIVITY_CATEGORIES,
   classifyWindow,
@@ -181,14 +183,32 @@ const DEFAULT_SETTINGS: Settings = {
 
 const LEGACY_DEFAULT_EXCLUDED_KEYWORDS = ['微信', 'WeChat', 'QQ', 'Mail', '邮箱', 'Password', 'Token', 'Bank']
 
-const STORAGE_KEY = 'moji-activities'
-const SETTINGS_KEY = 'moji-settings'
+// 已发布版本使用的持久化键属于兼容协议，不随产品代号改名。
+const STORAGE_KEY = 'xiaohei-activities'
+const SETTINGS_KEY = 'xiaohei-settings'
 // API Key 单独存储，避免与普通设置混在一起被整体序列化（后续可迁移到 Tauri 安全存储）
-const SETTINGS_KEY_API = 'moji-settings-api-key'
-const SETTINGS_KEY_SYNC_PASSWORD = 'moji-settings-sync-password'
+const SETTINGS_KEY_API = 'xiaohei-settings-api-key'
+const SETTINGS_KEY_SYNC_PASSWORD = 'xiaohei-settings-sync-password'
 
 function createActivityId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+}
+
+function previousReportSourceDate(
+  type: 'daily' | 'weekly' | 'monthly',
+  sourceDate: string,
+): string | null {
+  const [year, month, day] = sourceDate.split('-').map(Number)
+  if (!year || !month || !day) return null
+
+  const date = new Date(year, month - 1, day, 12)
+  if (type === 'monthly') {
+    date.setDate(1)
+    date.setMonth(date.getMonth() - 1)
+  } else {
+    date.setDate(date.getDate() - (type === 'weekly' ? 7 : 1))
+  }
+  return localDateKey(date) || null
 }
 
 /** 把 AW 事件转成墨记活动；重复窗口短停留直接过滤 */
@@ -305,6 +325,12 @@ function mapReportHistory(items: DbReportHistory[]): ReportHistoryItem[] {
       type: item.report_type as ReportHistoryItem['type'],
       template: item.template,
       content: item.content,
+      originContent: item.origin_content ?? undefined,
+      edited: Boolean(item.origin_content),
+      editedAt: item.edited_at ?? undefined,
+      generationMode: item.generation_mode === 'local' || item.generation_mode === 'llm'
+        ? item.generation_mode
+        : undefined,
     }))
 }
 
@@ -553,9 +579,25 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true }
   }, [])
 
-  // localStorage 不存在时从 SQLite 恢复报告历史；显式保存的空数组不应被恢复回来。
+  // localStorage 是当前状态源；启动时回填 SQLite，使旧版仅存于前端的编辑元数据持久化。
   useEffect(() => {
-    if (hasStoredReportHistory()) return
+    if (!sqliteReady) return
+    if (hasStoredReportHistory()) {
+      const localHistory = loadReportHistory()
+      void Promise.all(localHistory.map(item => dbSaveReportHistory({
+        id: item.id,
+        createdAt: item.createdAt,
+        type: item.type,
+        template: item.template,
+        content: item.content,
+        originContent: item.originContent ?? null,
+        editedAt: item.editedAt ?? null,
+        generationMode: item.generationMode ?? null,
+      }))).catch(error => {
+        console.warn('SQLite 回填报告历史失败', error)
+      })
+      return
+    }
     void dbLoadReportHistory().then(items => {
       if (!items || items.length === 0) return
       const restored = mapReportHistory(items)
@@ -564,7 +606,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
         setReportHistory(restored)
       }
     }).catch(() => {})
-  }, [])
+  }, [sqliteReady])
 
   const saveToSqlite = useCallback((activity: Activity) => {
     if (!sqliteReady) return
@@ -781,10 +823,17 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       let reportContent: string
 
       if (settings.dataSource === 'local') {
-        reportContent = generateLocalDailyReport(dayActivities.length > 0 ? dayActivities : activitiesRef.current, date, templateKey)
+        reportContent = generateLocalReport(activitiesRef.current, date, reportType, templateKey)
       } else {
-        const { generateReport } = await import('../utils/ai')
+        const [{ generateReport }, { buildAiReportStats }] = await Promise.all([
+          import('../utils/ai'),
+          import('../utils/awReport'),
+        ])
         const templateDescription = getTemplateDescription(templateKey, loadCustomTemplates())
+        const previousDate = previousReportSourceDate(reportType, date)
+        const previousActivities = previousDate
+          ? filterActivitiesForReportPeriod(activitiesRef.current, reportType, previousDate)
+          : []
         reportContent = await generateReport(
           dayActivities.map(a => ({
             timestamp: a.timestamp,
@@ -801,12 +850,20 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
           settings.baseUrl,
           settings.textModel,
           templateDescription,
+          buildAiReportStats(dayActivities, previousActivities),
         )
       }
 
       // 保存到历史记录并展示在界面上
       const { addReportHistoryItem } = await import('../utils/reportHistory')
-      const nextHistory = addReportHistoryItem(loadReportHistory(), reportType, reportContent, templateKey, date)
+      const nextHistory = addReportHistoryItem(
+        loadReportHistory(),
+        reportType,
+        reportContent,
+        templateKey,
+        date,
+        settings.dataSource,
+      )
       setReportHistory(nextHistory)
       setLastReport(nextHistory[0] ?? null)
     } finally {

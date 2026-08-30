@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { useEffect, useMemo, useState } from 'react'
 import {
   buildLocalTemplate,
+  buildNarrativeCacheSignature,
+  buildNarrativeLlmPayload,
   computeNarrativeSummary,
   type NarrativeSummary,
 } from '../utils/narrative'
@@ -31,13 +33,14 @@ function removeOuterQuotes(value: string): string {
 
 export function useNarrativeCard({
   activities,
-  enableLLM = false,
+  enableLLM,
 }: NarrativeCardOptions): {
   text: string
   isLLM: boolean
   summary: NarrativeSummary
 } {
   const { settings } = useActivityStore()
+  const llmEnabled = enableLLM ?? settings.dataSource === 'llm'
 
   const { summary, localText } = useMemo(() => {
     const computedSummary = computeNarrativeSummary(activities, new Date())
@@ -58,7 +61,7 @@ export function useNarrativeCard({
     setText(localText)
     setIsLLM(false)
 
-    if (!enableLLM || summary.totalSeconds <= 0) {
+    if (!llmEnabled || summary.totalSeconds <= 0) {
       return () => {
         active = false
         if (timer) clearTimeout(timer)
@@ -86,18 +89,37 @@ export function useNarrativeCard({
       }
     }
 
-    const cacheKey = `moji-narrative-llm-${getCacheDate()}`
+    const cacheDate = getCacheDate()
+    const cacheKey = `moji-narrative-llm-${cacheDate}`
+    const llmPayload = buildNarrativeLlmPayload(summary)
+    const cacheSignature = buildNarrativeCacheSignature(llmPayload, textModel, baseUrl)
 
     try {
       const cached = localStorage.getItem(cacheKey)
-      if (cached && cached.trim()) {
-        setText(cached)
-        setIsLLM(true)
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached) as unknown
+          if (
+            parsed
+            && typeof parsed === 'object'
+            && 'signature' in parsed
+            && 'text' in parsed
+            && parsed.signature === cacheSignature
+            && typeof parsed.text === 'string'
+            && parsed.text.trim()
+            && parsed.text.length <= 40
+          ) {
+            setText(parsed.text)
+            setIsLLM(true)
 
-        return () => {
-          active = false
-          if (timer) clearTimeout(timer)
-          controller.abort()
+            return () => {
+              active = false
+              if (timer) clearTimeout(timer)
+              controller.abort()
+            }
+          }
+        } catch {
+          // 旧版纯字符串缓存没有数据签名，忽略后重新生成。
         }
       }
     } catch {
@@ -125,13 +147,7 @@ export function useNarrativeCard({
                 },
                 {
                   role: 'user',
-                  content: JSON.stringify({
-                    totalMinutes: summary.totalMinutes,
-                    activeRange: summary.activeRange,
-                    topApps: summary.topApps,
-                    categoryRatio: summary.categoryRatio,
-                    longestFocus: summary.longestFocus,
-                  }),
+                  content: JSON.stringify(llmPayload),
                 },
               ],
               maxTokens: 60,
@@ -161,7 +177,7 @@ export function useNarrativeCard({
         setIsLLM(true)
 
         try {
-          localStorage.setItem(cacheKey, cleaned)
+          localStorage.setItem(cacheKey, JSON.stringify({ signature: cacheSignature, text: cleaned }))
         } catch {
           console.warn('保存今日叙事卡缓存失败。')
         }
@@ -184,7 +200,7 @@ export function useNarrativeCard({
       if (timer) clearTimeout(timer)
       controller.abort()
     }
-  }, [summary, enableLLM])
+  }, [localText, llmEnabled, settings.apiKey, settings.baseUrl, settings.textModel, summary])
 
   return { text, isLLM, summary }
 }

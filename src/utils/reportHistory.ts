@@ -7,6 +7,7 @@
 import { localDateKey } from './date'
 
 export type ReportType = 'daily' | 'weekly' | 'monthly'
+export type ReportGenerationMode = 'local' | 'llm'
 
 export interface ReportHistoryItem {
   id: string
@@ -17,6 +18,7 @@ export interface ReportHistoryItem {
   originContent?: string
   edited?: boolean
   editedAt?: number
+  generationMode?: ReportGenerationMode
 }
 
 const REPORT_HISTORY_KEY = 'moji-report-history'
@@ -77,6 +79,10 @@ function isReportType(value: unknown): value is ReportType {
   return value === 'daily' || value === 'weekly' || value === 'monthly'
 }
 
+function isReportGenerationMode(value: unknown): value is ReportGenerationMode {
+  return value === 'local' || value === 'llm'
+}
+
 function normalizeHistoryItem(value: unknown): ReportHistoryItem | null {
   if (!value || typeof value !== 'object') return null
 
@@ -109,6 +115,7 @@ function normalizeHistoryItem(value: unknown): ReportHistoryItem | null {
     edited: item.edited === true,
     editedAt,
     originContent,
+    generationMode: isReportGenerationMode(item.generationMode) ? item.generationMode : undefined,
   }
 }
 
@@ -141,6 +148,9 @@ function syncToSqlite(item: ReportHistoryItem) {
       type: item.type,
       template: item.template,
       content: item.content,
+      originContent: item.originContent ?? null,
+      editedAt: item.editedAt ?? null,
+      generationMode: item.generationMode ?? null,
     }).catch(error => {
       console.warn('Failed to save report history to SQLite', error)
     }),
@@ -165,6 +175,7 @@ export function addReportHistoryItem(
   content: string,
   template = 'standard',
   sourceDate = localDateKey(new Date()),
+  generationMode?: ReportGenerationMode,
 ): ReportHistoryItem[] {
   const nextItem: ReportHistoryItem = {
     id: createReportHistoryId(sourceDate),
@@ -172,6 +183,7 @@ export function addReportHistoryItem(
     type,
     template,
     content,
+    generationMode,
   }
   const nextHistory = [nextItem, ...history].slice(0, MAX_REPORT_HISTORY)
   saveReportHistory(nextHistory)
@@ -185,7 +197,7 @@ export function updateReportHistoryItem(
   content: string,
 ): ReportHistoryItem[] {
   const item = history.find(historyItem => historyItem.id === id)
-  if (!item) return history
+  if (!item || !content.trim()) return history
 
   const editedAt = Date.now()
   const updatedItem: ReportHistoryItem = {

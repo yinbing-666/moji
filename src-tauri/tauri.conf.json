@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/nicholasgasior/tauri-config-schema/tauri-v2/schema.json",
   "productName": "墨记",
   "version": "0.2.1",
-  "identifier": "com.moji.daily",
+  "identifier": "com.xiaohei.daily",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",

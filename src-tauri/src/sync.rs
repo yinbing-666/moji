@@ -62,6 +62,10 @@ fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
 fn encrypt_snapshot(snapshot: &SyncSnapshot, password: &str) -> Result<Vec<u8>, String> {
     let plaintext =
         serde_json::to_vec(snapshot).map_err(|error| format!("序列化同步快照失败：{error}"))?;
+    encrypt_plaintext(&plaintext, password)
+}
+
+fn encrypt_plaintext(plaintext: &[u8], password: &str) -> Result<Vec<u8>, String> {
     let mut salt = [0u8; SALT_LEN];
     let mut nonce_bytes = [0u8; NONCE_LEN];
     OsRng.fill_bytes(&mut salt);
@@ -128,7 +132,8 @@ fn load_snapshot(connection: &Connection) -> Result<SyncSnapshot, String> {
 
     let mut reports_statement = connection
         .prepare(
-            "SELECT id, created_at, report_type, template, content
+            "SELECT id, created_at, report_type, template, content,
+                    origin_content, edited_at, generation_mode
              FROM report_history ORDER BY created_at DESC",
         )
         .map_err(|error| format!("准备同步报告查询失败：{error}"))?;
@@ -140,6 +145,9 @@ fn load_snapshot(connection: &Connection) -> Result<SyncSnapshot, String> {
                 report_type: row.get(2)?,
                 template: row.get(3)?,
                 content: row.get(4)?,
+                origin_content: row.get(5)?,
+                edited_at: row.get(6)?,
+                generation_mode: row.get(7)?,
             })
         })
         .map_err(|error| format!("查询同步报告失败：{error}"))?
@@ -390,8 +398,19 @@ pub fn sync_with_folder(
     }
     for item in &merged.report_history {
         transaction.execute(
-            "INSERT OR IGNORE INTO report_history (id, created_at, report_type, template, content) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![item.id, item.created_at, item.report_type, item.template, item.content],
+            "INSERT OR IGNORE INTO report_history
+             (id, created_at, report_type, template, content, origin_content, edited_at, generation_mode)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                item.id,
+                item.created_at,
+                item.report_type,
+                item.template,
+                item.content,
+                item.origin_content,
+                item.edited_at,
+                item.generation_mode,
+            ],
         ).map_err(|error| format!("合并同步报告失败：{error}"))?;
     }
     for item in &merged.weekly_plans {
@@ -465,6 +484,52 @@ mod tests {
             1
         );
         assert!(decrypt_snapshot(&bytes, "wrong-password").is_err());
+    }
+
+    #[test]
+    fn report_metadata_round_trips_through_encrypted_snapshot() {
+        let mut snapshot = empty_snapshot();
+        snapshot.report_history.push(DbReportHistory {
+            id: "report-1".into(),
+            created_at: "2026-08-30T12:00:00Z".into(),
+            report_type: "weekly".into(),
+            template: "standard".into(),
+            content: "edited".into(),
+            origin_content: Some("original".into()),
+            edited_at: Some(1_777_777_777_000),
+            generation_mode: Some("local".into()),
+        });
+
+        let bytes = encrypt_snapshot(&snapshot, "correct-password").expect("encrypt snapshot");
+        let restored = decrypt_snapshot(&bytes, "correct-password").expect("decrypt snapshot");
+        let report = &restored.report_history[0];
+        assert_eq!(report.origin_content.as_deref(), Some("original"));
+        assert_eq!(report.edited_at, Some(1_777_777_777_000));
+        assert_eq!(report.generation_mode.as_deref(), Some("local"));
+    }
+
+    #[test]
+    fn legacy_encrypted_snapshot_defaults_missing_report_metadata() {
+        let legacy = serde_json::json!({
+            "version": 1,
+            "createdAt": 1,
+            "activities": [],
+            "reportHistory": [{
+                "id": "legacy-report",
+                "created_at": "2026-08-22T00:00:00Z",
+                "report_type": "daily",
+                "template": "standard",
+                "content": "legacy"
+            }],
+            "weeklyPlans": []
+        });
+        let plaintext = serde_json::to_vec(&legacy).expect("serialize legacy snapshot");
+        let bytes = encrypt_plaintext(&plaintext, "correct-password").expect("encrypt legacy snapshot");
+        let restored = decrypt_snapshot(&bytes, "correct-password").expect("decrypt legacy snapshot");
+        let report = &restored.report_history[0];
+        assert_eq!(report.origin_content, None);
+        assert_eq!(report.edited_at, None);
+        assert_eq!(report.generation_mode, None);
     }
 
     #[test]

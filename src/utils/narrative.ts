@@ -27,6 +27,37 @@ export interface NarrativeSummary {
   distinctApps: number
 }
 
+export interface NarrativeLlmPayload {
+  totalMinutes: number
+  activeRange: NarrativeSummary['activeRange']
+  topApps: NarrativeSummary['topApps']
+  categoryRatio: NarrativeSummary['categoryRatio']
+  longestFocus: NarrativeSummary['longestFocus']
+}
+
+export function buildNarrativeLlmPayload(summary: NarrativeSummary): NarrativeLlmPayload {
+  return {
+    totalMinutes: summary.totalMinutes,
+    activeRange: summary.activeRange,
+    topApps: summary.topApps,
+    categoryRatio: summary.categoryRatio,
+    longestFocus: summary.longestFocus,
+  }
+}
+
+export function buildNarrativeCacheSignature(
+  payload: NarrativeLlmPayload,
+  model: string,
+  baseUrl: string,
+): string {
+  return JSON.stringify({
+    promptVersion: 1,
+    payload,
+    model,
+    baseUrl: baseUrl.replace(/\/+$/, ''),
+  })
+}
+
 interface ActivityInterval {
   activity: Activity
   startMs: number
@@ -78,21 +109,31 @@ function sumIntervals(intervals: MergedInterval[]): number {
   }, 0)
 }
 
-function groupBy<T>(items: T[], keySelector: (item: T) => string): Map<string, T[]> {
-  const groups = new Map<string, T[]>()
+function allocateIntervalSeconds(
+  intervals: ActivityInterval[],
+  keySelector: (interval: ActivityInterval) => string,
+): Map<string, number> {
+  const boundaries = [...new Set(intervals.flatMap(interval => [interval.startMs, interval.endMs]))]
+    .sort((a, b) => a - b)
+  const totals = new Map<string, number>()
 
-  for (const item of items) {
-    const key = keySelector(item)
-    const group = groups.get(key)
+  for (let index = 0; index < boundaries.length - 1; index += 1) {
+    const startMs = boundaries[index]
+    const endMs = boundaries[index + 1]
+    const activeKeys = new Set(
+      intervals
+        .filter(interval => interval.startMs < endMs && interval.endMs > startMs)
+        .map(keySelector),
+    )
+    if (activeKeys.size === 0) continue
 
-    if (group) {
-      group.push(item)
-    } else {
-      groups.set(key, [item])
+    const secondsPerKey = (endMs - startMs) / 1000 / activeKeys.size
+    for (const key of activeKeys) {
+      totals.set(key, (totals.get(key) ?? 0) + secondsPerKey)
     }
   }
 
-  return groups
+  return totals
 }
 
 function getFocusSegments(intervals: ActivityInterval[]): ActivityInterval[][] {
@@ -245,23 +286,14 @@ export function computeNarrativeSummary(
       return emptySummary
     }
 
-    const appGroups = groupBy(intervals, (interval) => interval.activity.app)
-    const appSeconds = new Map<string, number>()
-
-    for (const [app, appIntervals] of appGroups) {
-      appSeconds.set(app, sumIntervals(mergeIntervals(appIntervals)))
-    }
-
-    const categoryGroups = groupBy(
+    const appSeconds = allocateIntervalSeconds(intervals, interval => interval.activity.app)
+    const categorySeconds = allocateIntervalSeconds(
       intervals,
       (interval) => interval.activity.category,
     )
-    const categorySeconds = new Map<ActivityCategory, number>()
     const categoryRatio: Partial<Record<ActivityCategory, number>> = {}
 
-    for (const [category, categoryIntervals] of categoryGroups) {
-      const seconds = sumIntervals(mergeIntervals(categoryIntervals))
-      categorySeconds.set(category as ActivityCategory, seconds)
+    for (const [category, seconds] of categorySeconds) {
       categoryRatio[category as ActivityCategory] = seconds / totalSeconds
     }
 
@@ -304,7 +336,7 @@ export function computeNarrativeSummary(
     for (const [category, seconds] of categorySeconds.entries()) {
       const share = seconds / totalSeconds
       if (share > mainShare) {
-        mainCategory = category
+        mainCategory = category as ActivityCategory
         mainShare = share
       }
     }
@@ -312,26 +344,15 @@ export function computeNarrativeSummary(
     let mainThread: NarrativeSummary['mainThread'] = null
 
     if (mainCategory !== null && Number.isFinite(mainShare)) {
-      const mainCategoryApps = new Map<string, ActivityInterval[]>()
-
-      for (const interval of intervals) {
-        if (interval.activity.category !== mainCategory) {
-          continue
-        }
-
-        const group = mainCategoryApps.get(interval.activity.app)
-        if (group) {
-          group.push(interval)
-        } else {
-          mainCategoryApps.set(interval.activity.app, [interval])
-        }
-      }
+      const mainCategoryAppSeconds = allocateIntervalSeconds(
+        intervals.filter(interval => interval.activity.category === mainCategory),
+        interval => interval.activity.app,
+      )
 
       let selectedApp = ''
       let selectedAppSeconds = -1
 
-      for (const [app, appIntervals] of mainCategoryApps.entries()) {
-        const seconds = sumIntervals(mergeIntervals(appIntervals))
+      for (const [app, seconds] of mainCategoryAppSeconds) {
         if (seconds > selectedAppSeconds) {
           selectedApp = app
           selectedAppSeconds = seconds
@@ -343,7 +364,7 @@ export function computeNarrativeSummary(
           category: mainCategory,
           share: mainShare,
           app: selectedApp,
-          appSeconds: selectedAppSeconds,
+          appSeconds: Math.min(selectedAppSeconds, categorySeconds.get(mainCategory) ?? selectedAppSeconds),
         }
       }
     }
