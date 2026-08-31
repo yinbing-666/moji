@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::{
     env,
     io::{self, BufRead, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 use tauri::Manager;
 
@@ -16,6 +16,26 @@ pub struct McpServerInfo {
     pub args: Vec<&'static str>,
     pub database_path: String,
     pub tools: Vec<&'static str>,
+}
+
+fn mcp_binary_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "moji-mcp.exe"
+    } else {
+        "moji-mcp"
+    }
+}
+
+fn mcp_server_command(
+    current_exe: &Path,
+    exists: impl Fn(&Path) -> bool,
+) -> (PathBuf, Vec<&'static str>) {
+    let standalone = current_exe.with_file_name(mcp_binary_name());
+    if exists(&standalone) {
+        (standalone, Vec::new())
+    } else {
+        (current_exe.to_path_buf(), vec!["--mcp"])
+    }
 }
 
 fn default_database_path() -> Option<PathBuf> {
@@ -183,8 +203,9 @@ pub fn run_stdio() {
 
 #[tauri::command]
 pub fn mcp_server_info(app: tauri::AppHandle) -> Result<McpServerInfo, String> {
-    let executable =
+    let current_exe =
         env::current_exe().map_err(|error| format!("读取墨记程序路径失败：{error}"))?;
+    let (executable, args) = mcp_server_command(&current_exe, Path::exists);
     let database_path = app
         .path()
         .app_data_dir()
@@ -192,7 +213,7 @@ pub fn mcp_server_info(app: tauri::AppHandle) -> Result<McpServerInfo, String> {
         .join("moji.db");
     Ok(McpServerInfo {
         executable: executable.to_string_lossy().to_string(),
-        args: vec!["--mcp"],
+        args,
         database_path: database_path.to_string_lossy().to_string(),
         tools: vec![
             "search_activities",
@@ -218,5 +239,30 @@ mod tests {
         assert!(tools
             .iter()
             .all(|tool| !tool["name"].as_str().unwrap_or("").contains("write")));
+    }
+
+    #[test]
+    fn prefers_standalone_mcp_binary_next_to_desktop_app() {
+        let current_exe = PathBuf::from("install").join(if cfg!(target_os = "windows") {
+            "moji-daily.exe"
+        } else {
+            "moji-daily"
+        });
+        let expected = current_exe.with_file_name(mcp_binary_name());
+
+        let (executable, args) = mcp_server_command(&current_exe, |path| path == expected);
+
+        assert_eq!(executable, expected);
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn falls_back_to_desktop_app_when_standalone_binary_is_missing() {
+        let current_exe = PathBuf::from("target").join("debug").join("moji-daily");
+
+        let (executable, args) = mcp_server_command(&current_exe, |_| false);
+
+        assert_eq!(executable, current_exe);
+        assert_eq!(args, vec!["--mcp"]);
     }
 }

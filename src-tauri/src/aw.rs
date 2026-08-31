@@ -4,7 +4,11 @@ use std::{
     net::{SocketAddr, TcpStream},
     path::PathBuf,
     process::{Child, Command},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+    thread::{self, JoinHandle},
     time::Duration,
 };
 use tauri::{AppHandle, Manager};
@@ -14,7 +18,11 @@ pub const INTERNAL_AW_PORT: u16 = 5601;
 const INTERNAL_BUCKET_ID: &str = "aw-watcher-window_moji";
 const INTERNAL_DEVICE_ID: &str = "moji";
 
-pub struct InternalAwServer(pub Mutex<Option<Child>>);
+pub struct InternalAwServer {
+    child: Arc<Mutex<Option<Child>>>,
+    stop: Arc<AtomicBool>,
+    monitor: Mutex<Option<JoinHandle<()>>>,
+}
 
 pub fn internal_server_available() -> bool {
     let address = SocketAddr::from(([127, 0, 0, 1], INTERNAL_AW_PORT));
@@ -297,12 +305,7 @@ pub struct AwWindowEventInput {
 
 /// 启动随墨记分发的 ActivityWatch server。采集器仍由墨记管理，不需要外部 watcher。
 pub fn start_internal_server(app: &AppHandle) -> Result<InternalAwServer, String> {
-    match server_is_healthy() {
-        Ok(true) => return Ok(InternalAwServer(Mutex::new(None))),
-        Ok(false) => {}
-        Err(error) => return Err(error),
-    }
-
+    let server_healthy = server_is_healthy()?;
     let binary = internal_server_binary(app)?;
     let data_dir = app
         .path()
@@ -313,7 +316,36 @@ pub fn start_internal_server(app: &AppHandle) -> Result<InternalAwServer, String
         .map_err(|e| format!("无法创建 ActivityWatch 数据目录: {e}"))?;
     let database_path = data_dir.join("sqlite.db");
 
-    let child = Command::new(&binary)
+    let initial_child = if server_healthy {
+        None
+    } else {
+        Some(spawn_internal_server(&binary, &database_path)?)
+    };
+    let child = Arc::new(Mutex::new(initial_child));
+    let stop = Arc::new(AtomicBool::new(false));
+    let monitor_child = Arc::clone(&child);
+    let monitor_stop = Arc::clone(&stop);
+    let monitor = thread::Builder::new()
+        .name("moji-aw-supervisor".to_string())
+        .spawn(move || {
+            supervise_internal_server(monitor_child, monitor_stop, binary, database_path)
+        })
+        .map_err(|error| {
+            if let Ok(mut child) = child.lock() {
+                stop_child(child.take());
+            }
+            format!("启动内置 ActivityWatch 守护线程失败: {error}")
+        })?;
+
+    Ok(InternalAwServer {
+        child,
+        stop,
+        monitor: Mutex::new(Some(monitor)),
+    })
+}
+
+fn spawn_internal_server(binary: &PathBuf, database_path: &PathBuf) -> Result<Child, String> {
+    Command::new(binary)
         .arg("--host")
         .arg(INTERNAL_AW_HOST)
         .arg("--port")
@@ -329,21 +361,94 @@ pub fn start_internal_server(app: &AppHandle) -> Result<InternalAwServer, String
                 "启动内置 ActivityWatch 服务失败（{}:{}，端口可能已被占用）: {e}",
                 INTERNAL_AW_HOST, INTERNAL_AW_PORT
             )
-        })?;
+        })
+}
 
-    Ok(InternalAwServer(Mutex::new(Some(child))))
+fn supervise_internal_server(
+    child: Arc<Mutex<Option<Child>>>,
+    stop: Arc<AtomicBool>,
+    binary: PathBuf,
+    database_path: PathBuf,
+) {
+    while !stop.load(Ordering::Acquire) {
+        let child_running = match child.lock() {
+            Ok(mut current) => child_is_running(&mut current),
+            Err(_) => return,
+        };
+
+        match server_is_healthy() {
+            Ok(healthy) if should_start_server(healthy, child_running) => {
+                match spawn_internal_server(&binary, &database_path) {
+                    Ok(started) => {
+                        if stop.load(Ordering::Acquire) {
+                            stop_child(Some(started));
+                            return;
+                        }
+                        match child.lock() {
+                            Ok(mut current) if !stop.load(Ordering::Acquire) => {
+                                *current = Some(started);
+                            }
+                            _ => {
+                                stop_child(Some(started));
+                                return;
+                            }
+                        }
+                    }
+                    Err(error) => eprintln!("{error}"),
+                }
+            }
+            Ok(_) => {}
+            Err(error) => eprintln!("ActivityWatch 守护检查失败: {error}"),
+        }
+
+        thread::sleep(Duration::from_secs(2));
+    }
+}
+
+fn child_is_running(child: &mut Option<Child>) -> bool {
+    let Some(current) = child.as_mut() else {
+        return false;
+    };
+    match current.try_wait() {
+        Ok(None) => true,
+        Ok(Some(_)) => {
+            child.take();
+            false
+        }
+        Err(error) => {
+            eprintln!("检查内置 ActivityWatch 子进程失败: {error}");
+            stop_child(child.take());
+            false
+        }
+    }
+}
+
+fn should_start_server(healthy: bool, child_running: bool) -> bool {
+    !healthy && !child_running
+}
+
+fn stop_child(child: Option<Child>) {
+    if let Some(mut child) = child {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
 }
 
 pub fn stop_internal_server(app: &AppHandle) {
     let Some(server) = app.try_state::<InternalAwServer>() else {
         return;
     };
-    let Ok(mut child) = server.0.lock() else {
-        return;
-    };
-    if let Some(mut child) = child.take() {
-        let _ = child.kill();
-        let _ = child.wait();
+    server.stop.store(true, Ordering::Release);
+    if let Ok(mut child) = server.child.lock() {
+        stop_child(child.take());
+    }
+    let monitor = server
+        .monitor
+        .lock()
+        .ok()
+        .and_then(|mut monitor| monitor.take());
+    if let Some(monitor) = monitor {
+        let _ = monitor.join();
     }
 }
 
@@ -450,7 +555,7 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_unix_millis, urlencode};
+    use super::{format_unix_millis, should_start_server, urlencode};
 
     #[test]
     fn formats_utc_timestamp_with_z_suffix() {
@@ -461,5 +566,12 @@ mod tests {
     #[test]
     fn encodes_non_ascii_bucket_ids() {
         assert_eq!(urlencode("aw_测试"), "aw_%E6%B5%8B%E8%AF%95");
+    }
+
+    #[test]
+    fn starts_server_only_when_service_and_owned_child_are_both_absent() {
+        assert!(!should_start_server(true, false));
+        assert!(!should_start_server(false, true));
+        assert!(should_start_server(false, false));
     }
 }
