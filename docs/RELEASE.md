@@ -33,6 +33,8 @@ npm run tauri build
 
 当前版本只发布 Windows 10／11 x64 安装包，构建配置为 `src-tauri/tauri.windows.conf.json`。不创建 macOS 或 Linux 安装包。
 
+Windows 构建会先运行 `scripts/patch-aw-server.ps1`。脚本只接受已知的原始哈希或补丁哈希，并将 ActivityWatch 的 PE 子系统改为 Windows GUI，避免启动服务时打开终端窗口。哈希或 PE 结构不符合预期时，构建必须失败。
+
 ## 3. 安装包校验
 
 对最终 NSIS 安装包计算 SHA-256：
@@ -51,7 +53,7 @@ npm run tauri build
 4. 使用隔离测试数据库启动已安装的 `moji-mcp.exe --db <测试数据库>`，验证初始化、`tools/list`、健康检查、搜索和汇总；不要用真实活动数据库做 MCP 发布测试。
 5. 启动已安装主程序，确认 `127.0.0.1:5601/api/0/info` 的 `device_id` 为 `moji`。
 6. 记录 ActivityWatch 子进程的 PID、父进程 PID 和文件路径。确认父进程是本轮启动的墨记后，终止此 ActivityWatch 子进程。
-7. 确认守护线程启动了新的 ActivityWatch 子进程，并恢复 `5601` 监听和健康响应。
+7. 确认守护线程启动了新的 ActivityWatch 子进程，并恢复 `5601` 监听和健康响应。首次进程和替代进程都不应创建自属的 `conhost.exe` 或 Windows Terminal 窗口。
 8. 将安装目录、版本、安装包 SHA-256、MCP 结果和 ActivityWatch 接管结果记录到 `ROADMAP.md`。
 
 ## 5. 发布边界
