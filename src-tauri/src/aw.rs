@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
     path::PathBuf,
-    process::{Child, Command},
+    process::{Child, Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -12,11 +14,15 @@ use std::{
     time::Duration,
 };
 use tauri::{AppHandle, Manager};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
 pub const INTERNAL_AW_HOST: &str = "127.0.0.1";
 pub const INTERNAL_AW_PORT: u16 = 5601;
 const INTERNAL_BUCKET_ID: &str = "aw-watcher-window_moji";
 const INTERNAL_DEVICE_ID: &str = "moji";
+#[cfg(target_os = "windows")]
+const INTERNAL_SERVER_CREATION_FLAGS: u32 = CREATE_NO_WINDOW;
 
 pub struct InternalAwServer {
     child: Arc<Mutex<Option<Child>>>,
@@ -345,7 +351,8 @@ pub fn start_internal_server(app: &AppHandle) -> Result<InternalAwServer, String
 }
 
 fn spawn_internal_server(binary: &PathBuf, database_path: &PathBuf) -> Result<Child, String> {
-    Command::new(binary)
+    let mut command = Command::new(binary);
+    command
         .arg("--host")
         .arg(INTERNAL_AW_HOST)
         .arg("--port")
@@ -355,13 +362,18 @@ fn spawn_internal_server(binary: &PathBuf, database_path: &PathBuf) -> Result<Ch
         .arg("--device-id")
         .arg(INTERNAL_DEVICE_ID)
         .arg("--no-legacy-import")
-        .spawn()
-        .map_err(|e| {
-            format!(
-                "启动内置 ActivityWatch 服务失败（{}:{}，端口可能已被占用）: {e}",
-                INTERNAL_AW_HOST, INTERNAL_AW_PORT
-            )
-        })
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(target_os = "windows")]
+    command.creation_flags(INTERNAL_SERVER_CREATION_FLAGS);
+
+    command.spawn().map_err(|e| {
+        format!(
+            "启动内置 ActivityWatch 服务失败（{}:{}，端口可能已被占用）: {e}",
+            INTERNAL_AW_HOST, INTERNAL_AW_PORT
+        )
+    })
 }
 
 fn supervise_internal_server(
@@ -555,7 +567,11 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "windows")]
+    use super::INTERNAL_SERVER_CREATION_FLAGS;
     use super::{format_unix_millis, should_start_server, urlencode};
+    #[cfg(target_os = "windows")]
+    use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
     #[test]
     fn formats_utc_timestamp_with_z_suffix() {
@@ -573,5 +589,11 @@ mod tests {
         assert!(!should_start_server(true, false));
         assert!(!should_start_server(false, true));
         assert!(should_start_server(false, false));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn starts_internal_server_without_a_console_window() {
+        assert_eq!(INTERNAL_SERVER_CREATION_FLAGS, CREATE_NO_WINDOW);
     }
 }

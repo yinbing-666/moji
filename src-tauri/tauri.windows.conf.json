@@ -1,4 +1,7 @@
 {
+  "build": {
+    "beforeBuildCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/patch-aw-server.ps1 && npm run build"
+  },
   "bundle": {
     "targets": ["nsis"],
     "resources": {
