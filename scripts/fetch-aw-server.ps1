@@ -1,7 +1,7 @@
 # 从墨记仓库 Release 下载内置 ActivityWatch 二进制到构建位置
 # 用法: powershell -ExecutionPolicy Bypass -File scripts/fetch-aw-server.ps1
 $ErrorActionPreference = "Stop"
-$version = "v0.2.0"
+$version = "aw-server-rust-0.13.2"
 $expectedSha256 = "eaf7a265ab05d0ffbca6fefced047a95116a9fb8b3d439ea4cc23c5b25e95232"
 $url = "https://github.com/yinbing-666/moji/releases/download/$version/aw-server-rust.exe"
 $dest = Join-Path $PSScriptRoot "..\src-tauri\vendor\activitywatch\aw-server-rust.exe"
